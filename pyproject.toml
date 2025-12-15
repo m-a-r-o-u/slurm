@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slurm-cli"
+version = "0.1.0"
+description = "Command-line utilities and apps for SLURM workflows"
+authors = [{name = "Example Maintainer", email = "maintainer@example.com"}]
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.scripts]
+slurm = "slurm_cli.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
