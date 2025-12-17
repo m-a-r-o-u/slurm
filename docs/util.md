@@ -11,12 +11,12 @@ Every utility command accepts two ways to pick dates:
 
 Date ranges are inclusive when calculating totals, and sacct exports run for each day in the range.
 
-## Metrics update
+## Metrics build
 
 Turn sacct CSV exports into analytics-ready Parquet datasets:
 
 ```
-slurm-utils metrics update --input-dir sacct-exports --output-path metrics/jobs_data.parquet
+slurm-utils metrics build --input-dir sacct-exports --output-path metrics/jobs_data.parquet
 ```
 
 - The command is idempotent: rerunning it rewrites `jobs_data.parquet` from the current CSV files.

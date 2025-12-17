@@ -10,8 +10,8 @@ from typing import Iterable, List, Optional
 
 
 @dataclass(frozen=True)
-class MetricsUpdateResult:
-    """Summary of a metrics update run."""
+class MetricsBuildResult:
+    """Summary of a metrics build run."""
 
     source_files: list[Path]
     output_path: Path
@@ -186,7 +186,7 @@ def _write_jobs_dataset(records: list[dict], output_path: Path) -> str:
         return "json"
 
 
-def update_metrics(*, input_dir: Path, output_path: Path) -> MetricsUpdateResult:
+def build_metrics(*, input_dir: Path, output_path: Path) -> MetricsBuildResult:
     csv_files = sorted(input_dir.glob("*.csv"))
     raw_records = _load_sacct_exports(csv_files)
     jobs = _derive_jobs(raw_records)
@@ -194,7 +194,7 @@ def update_metrics(*, input_dir: Path, output_path: Path) -> MetricsUpdateResult
     output_path.parent.mkdir(parents=True, exist_ok=True)
     storage_format = _write_jobs_dataset(jobs, output_path)
 
-    return MetricsUpdateResult(
+    return MetricsBuildResult(
         source_files=csv_files,
         output_path=output_path,
         rows_written=len(jobs),

@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 
-from slurm_cli.metrics import update_metrics
+from slurm_cli.metrics import build_metrics
 import slurm_cli.simple_cli as simple_cli
 
 
@@ -11,7 +11,7 @@ CSV_SAMPLE = """JobIDRaw,User,Account,Partition,Submit,Start,End,State,ExitCode,
 """
 
 
-def test_update_metrics_builds_parquet(tmp_path: Path):
+def test_build_metrics_writes_dataset(tmp_path: Path):
     csv_path = tmp_path / "sacct-exports"
     csv_path.mkdir()
     source_file = csv_path / "2025-10-26.csv"
@@ -19,7 +19,7 @@ def test_update_metrics_builds_parquet(tmp_path: Path):
 
     output_path = tmp_path / "metrics" / "jobs_data.parquet"
 
-    result = update_metrics(input_dir=csv_path, output_path=output_path)
+    result = build_metrics(input_dir=csv_path, output_path=output_path)
 
     assert result.output_path == output_path
     assert result.source_files == [source_file]
@@ -53,28 +53,28 @@ def test_update_metrics_builds_parquet(tmp_path: Path):
     assert second["is_wasted"] is False
 
 
-def test_simple_cli_metrics_update_runs(monkeypatch, tmp_path: Path):
+def test_simple_cli_metrics_build_runs(monkeypatch, tmp_path: Path):
     output_path = tmp_path / "jobs_data.parquet"
 
     from slurm_cli import metrics as metrics_module
 
-    def fake_update_metrics(*, input_dir, output_path):
+    def fake_build_metrics(*, input_dir, output_path):
         assert input_dir == tmp_path
-        return metrics_module.update_metrics(input_dir=input_dir, output_path=output_path)
+        return metrics_module.build_metrics(input_dir=input_dir, output_path=output_path)
 
     csv_file = tmp_path / "2024-01-01.csv"
     csv_file.write_text(CSV_SAMPLE)
 
     args = simple_cli.argparse.Namespace(
         command="metrics",
-        metrics_command="update",
+        metrics_command="build",
         input_dir=tmp_path,
         output_path=output_path,
     )
 
-    monkeypatch.setattr(simple_cli, "update_metrics", fake_update_metrics)
+    monkeypatch.setattr(simple_cli, "build_metrics", fake_build_metrics)
 
-    payload = json.loads(simple_cli.handle_metrics_update(args))
+    payload = json.loads(simple_cli.handle_metrics_build(args))
 
     assert payload["output_path"] == str(output_path)
     assert payload["source_files"] == [str(csv_file)]
