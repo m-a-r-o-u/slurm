@@ -11,6 +11,36 @@ Every utility command accepts two ways to pick dates:
 
 Date ranges are inclusive when calculating totals, and sacct exports run for each day in the range.
 
+## Metrics build
+
+Turn sacct CSV exports into analytics-ready Parquet datasets:
+
+```
+slurm-utils metrics build --input-dir sacct-exports --output-path metrics/jobs_data.parquet
+```
+
+- The command is idempotent: rerunning it rewrites `jobs_data.parquet` from the current CSV files.
+- Derived fields include waiting time, GPU hours, GPU/CPU counts, and convenience booleans (`is_gpu_job`, `is_failed`, `is_wasted`).
+- Timestamp columns are parsed to UTC, and date buckets are derived from the end timestamp (or submit time when missing).
+- When PyArrow is unavailable the dataset is written as JSON to the same path for portability in constrained environments.
+
+## Metrics query
+
+Aggregate derived metrics from the jobs dataset:
+
+```
+slurm-utils metrics query gpu_hours --by month,account
+slurm-utils metrics query gpu_hours --by month,account --stat mean
+slurm-utils metrics query gpu_hours --date 2025-03 --format table
+```
+
+- `--by` sets grouping columns. Supported values: `day`, `week`, `month`, `year`, `partition`, `account`, `user`, `state`.
+- At most one time-based value is allowed, and it must be the first entry. Time buckets are derived from `end_ts`.
+- Statistics default to `sum`. Provide `--stat mean` for per-job averages (e.g., mean GPU hours per group).
+- Optional date selectors `--date`, `--start`, and `--end` reuse the sacct export rules to limit which jobs to aggregate, based on `end_ts`.
+- Use `--format` to switch output rendering: `json` (default), `yaml`, `csv`, or a plaintext `table` layout for quick inspection.
+- Add `--select` to pre-filter jobs with shell-style patterns before aggregation. Supported keys: `partition`, `account`, `user`, `state`. Combine selectors with `;` in a single flag or repeat `--select` to AND multiple filters (e.g., `--select partition:mcml*;user:di38qex`).
+
 ## GPU-hour calculator
 
 ```
