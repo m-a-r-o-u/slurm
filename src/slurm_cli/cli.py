@@ -4,11 +4,58 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 from typing import Sequence
 
 from .apps import report_gpu_hours_by_project
-from .dates import DateRangeError, resolve_date_range
+from .dates import DateRange, DateRangeError, resolve_date_range
+from .exports import export_sacct
 from .utils import JobUsage, calculate_job_gpu_hours
+
+
+def _add_date_arguments(parser: argparse.ArgumentParser, start_required: bool = True) -> None:
+    group = parser.add_mutually_exclusive_group(required=start_required)
+    group.add_argument(
+        "--start",
+        "-s",
+        help=(
+            "Start date in YYYY, YYYY-MM, or YYYY-MM-DD. When provided, you can optionally"
+            " set --end to override the derived end date."
+        ),
+    )
+    group.add_argument(
+        "--date",
+        "-d",
+        help=(
+            "Single date selector accepting YYYY, YYYY-MM, or YYYY-MM-DD. The precision"
+            " determines the range: year → full year, month → full month, day → that day."
+        ),
+    )
+    parser.add_argument(
+        "--end",
+        "-e",
+        help=(
+            "Optional end date in YYYY-MM-DD. Ignored when --date is used. When omitted,"
+            " the end date is derived from the --start precision."
+        ),
+    )
+
+
+def _resolve_date_range_from_args(args: argparse.Namespace) -> DateRange:
+    if getattr(args, "date", None):
+        date_value = str(args.date)
+        try:
+            return resolve_date_range(date_value, None)
+        except DateRangeError as exc:  # noqa: TRY301
+            raise SystemExit(str(exc))
+
+    if getattr(args, "start", None):
+        try:
+            return resolve_date_range(str(args.start), getattr(args, "end", None))
+        except DateRangeError as exc:  # noqa: TRY301
+            raise SystemExit(str(exc))
+
+    raise SystemExit("Provide either --date or --start to select a date range.")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -25,38 +72,68 @@ def _build_parser() -> argparse.ArgumentParser:
     # Utilities
     util_parser = subparsers.add_parser(
         "utils",
-        help="Foundational helpers such as GPU-hour calculations.",
+        help="Foundational helpers such as GPU-hour calculations and data exports.",
         description=(
-            "Access reusable SLURM utilities. The GPU-hours calculator accepts flexible date ranges "
-            "and returns a concise JSON payload for downstream processing."
+            "Access reusable SLURM utilities. Pair flexible date selection with GPU-hour calculators "
+            "or sacct CSV exports. Use subcommands to choose the workflow."
         ),
     )
-    util_parser.add_argument("job_id", help="SLURM job identifier to describe.")
-    util_parser.add_argument(
-        "--start",
-        "-s",
-        required=True,
-        help=(
-            "Start date in YYYY, YYYY-MM, or YYYY-MM-DD. Precision determines the default end date: "
-            "year → last day of year, month → last day of month, day → last day of that month."
+    util_subparsers = util_parser.add_subparsers(dest="util_command", required=True)
+
+    gpu_parser = util_subparsers.add_parser(
+        "gpu-hours",
+        help="Calculate GPU-hours for a SLURM job across a date range.",
+        description=(
+            "Provide a job ID and a date selector to estimate GPU-hours. The calculator"
+            " accepts either an explicit start/end pair or a single --date value that"
+            " expands to a full year, month, or day."
         ),
     )
-    util_parser.add_argument(
-        "--end",
-        "-e",
-        help="Optional end date in YYYY-MM-DD. When omitted, derived from the --start precision.",
-    )
-    util_parser.add_argument(
+    gpu_parser.add_argument("job_id", help="SLURM job identifier to describe.")
+    _add_date_arguments(gpu_parser)
+    gpu_parser.add_argument(
         "--gpus",
         type=int,
         default=1,
         help="Number of GPUs allocated to the job (defaults to 1).",
     )
-    util_parser.add_argument(
+    gpu_parser.add_argument(
         "--hours-per-day",
         type=float,
         default=24.0,
         help="Assumed runtime hours per day for the job (defaults to 24).",
+    )
+
+    export_parser = util_subparsers.add_parser(
+        "export",
+        help="Export data from SLURM tools such as sacct.",
+        description=(
+            "Generate CSV exports for SLURM data sources. Exports honor the same flexible"
+            " date selectors used by other utilities."
+        ),
+    )
+    export_subparsers = export_parser.add_subparsers(dest="export_command", required=True)
+
+    sacct_parser = export_subparsers.add_parser(
+        "sacct",
+        help="Export sacct job accounting data to per-day CSV files.",
+        description=(
+            "Run sacct for each day in the selected range and write results to a"
+            " sacct-exports/<YYYY-MM-DD>.csv file. Accepts a single --date selector or"
+            " an explicit --start/--end pair."
+        ),
+    )
+    _add_date_arguments(sacct_parser)
+    sacct_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("sacct-exports"),
+        help="Directory to write per-day CSV files (defaults to ./sacct-exports).",
+    )
+    sacct_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print the sacct commands executed for each day before running them.",
     )
 
     # Applications
@@ -96,11 +173,8 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def handle_utils(args: argparse.Namespace) -> str:
-    try:
-        date_range = resolve_date_range(args.start, args.end)
-    except DateRangeError as exc:
-        raise SystemExit(str(exc))
+def handle_utils_gpu_hours(args: argparse.Namespace) -> str:
+    date_range = _resolve_date_range_from_args(args)
 
     usage = calculate_job_gpu_hours(
         job_id=args.job_id,
@@ -109,6 +183,22 @@ def handle_utils(args: argparse.Namespace) -> str:
         hours_per_day=args.hours_per_day,
     )
     return json.dumps(usage.as_dict(), indent=2)
+
+
+def handle_utils_export(args: argparse.Namespace) -> str:
+    if args.export_command == "sacct":
+        date_range = _resolve_date_range_from_args(args)
+        generated = export_sacct(date_range=date_range, output_dir=args.output_dir, debug=args.debug)
+        return json.dumps(
+            {
+                "output_dir": str(args.output_dir),
+                "files": [str(path) for path in generated],
+                "days_exported": len(generated),
+            },
+            indent=2,
+        )
+
+    raise SystemExit("Unknown export command")
 
 
 def _parse_job_json(value: str) -> JobUsage:
@@ -189,6 +279,15 @@ def handle_app(args: argparse.Namespace) -> str:
         return json.dumps(output, indent=2)
 
     raise SystemExit("Unknown application command")
+
+
+def handle_utils(args: argparse.Namespace) -> str:
+    if args.util_command == "gpu-hours":
+        return handle_utils_gpu_hours(args)
+    if args.util_command == "export":
+        return handle_utils_export(args)
+
+    raise SystemExit("Unknown utility command")
 
 
 def main(argv: Sequence[str] | None = None) -> None:
