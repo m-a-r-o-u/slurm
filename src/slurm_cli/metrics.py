@@ -30,6 +30,28 @@ class MetricsBuildResult:
         )
 
 
+@dataclass(frozen=True)
+class MetricsQueryResult:
+    """Result payload for an aggregated metrics query."""
+
+    metric: str
+    stat: str
+    by: list[str]
+    rows: list[dict]
+
+    def as_json(self) -> str:
+        return json.dumps(
+            {
+                "metric": self.metric,
+                "stat": self.stat,
+                "by": self.by,
+                "rows": self.rows,
+            },
+            indent=2,
+            default=str,
+        )
+
+
 def _parse_dt(value: str | None) -> Optional[datetime]:
     if not value:
         return None
@@ -184,6 +206,134 @@ def _write_jobs_dataset(records: list[dict], output_path: Path) -> str:
         # Fallback to JSON when pyarrow is unavailable
         output_path.write_text(json.dumps(records, default=str, indent=2))
         return "json"
+
+
+def _load_jobs_dataset(path: Path) -> list[dict]:
+    if not path.exists():
+        raise FileNotFoundError(f"Dataset not found at {path}")
+
+    try:
+        import pyarrow.parquet as pq
+
+        table = pq.read_table(path)
+        return table.to_pylist()
+    except Exception:
+        payload = path.read_text(encoding="utf-8")
+        return json.loads(payload)
+
+
+def _normalize_ts(value: object) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            ts = datetime.fromisoformat(value)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return ts
+        except ValueError:
+            return None
+    return None
+
+
+def _derive_time_bucket(end_ts: Optional[datetime], granularity: str) -> Optional[str]:
+    if end_ts is None:
+        return None
+
+    if granularity == "day":
+        return end_ts.date().isoformat()
+    if granularity == "week":
+        iso_year, iso_week, _ = end_ts.isocalendar()
+        return f"{iso_year}-W{iso_week:02d}"
+    if granularity == "month":
+        return f"{end_ts.year:04d}-{end_ts.month:02d}"
+    if granularity == "year":
+        return f"{end_ts.year:04d}"
+    return None
+
+
+def _validate_grouping(by: list[str]) -> tuple[Optional[str], list[str]]:
+    allowed = {"day", "week", "month", "year", "partition", "account", "user", "state"}
+    time_keys = {"day", "week", "month", "year"}
+
+    for entry in by:
+        if entry not in allowed:
+            raise ValueError(f"Unsupported grouping column: {entry}")
+
+    time_in_by = [entry for entry in by if entry in time_keys]
+    if len(time_in_by) > 1:
+        raise ValueError("Only one time-based grouping is allowed and it must be first")
+    time_prefix = time_in_by[0] if time_in_by else None
+    if time_prefix and by and by[0] != time_prefix:
+        raise ValueError("Time-based grouping must be the first entry in --by")
+
+    return time_prefix, by
+
+
+def query_metrics(
+    metric: str,
+    *,
+    dataset_path: Path,
+    by: Optional[list[str]] = None,
+    stat: Optional[str] = None,
+) -> MetricsQueryResult:
+    by = by or []
+    stat = (stat or "sum").lower()
+    if stat not in {"sum", "mean"}:
+        raise ValueError(f"Unsupported statistic: {stat}")
+
+    time_prefix, validated_by = _validate_grouping([entry.lower() for entry in by])
+    records = _load_jobs_dataset(dataset_path)
+
+    grouping_map = {
+        "partition": "partition",
+        "account": "account",
+        "user": "user_name",
+        "state": "state",
+    }
+
+    aggregates: dict[tuple, dict[str, float]] = {}
+
+    for record in records:
+        metric_value = record.get(metric)
+        if metric_value is None:
+            continue
+        try:
+            numeric_value = float(metric_value)
+        except (TypeError, ValueError):
+            continue
+
+        key_parts: list[object] = []
+        end_ts = _normalize_ts(record.get("end_ts"))
+        for group in validated_by:
+            if group == time_prefix:
+                key_parts.append(_derive_time_bucket(end_ts, group))
+            else:
+                key_parts.append(record.get(grouping_map.get(group, group)))
+
+        key = tuple(key_parts)
+        if key not in aggregates:
+            aggregates[key] = {"sum": 0.0, "count": 0}
+        aggregates[key]["sum"] += numeric_value
+        aggregates[key]["count"] += 1
+
+    rows: list[dict] = []
+    for key, values in aggregates.items():
+        row: dict = {}
+        for idx, group in enumerate(validated_by):
+            row[group] = key[idx]
+        if stat == "sum":
+            row[metric] = values["sum"]
+        elif stat == "mean":
+            count = values["count"] or 1
+            row[metric] = values["sum"] / count
+        rows.append(row)
+
+    rows.sort(key=lambda item: tuple(item.get(group) for group in validated_by))
+
+    return MetricsQueryResult(metric=metric, stat=stat, by=validated_by, rows=rows)
 
 
 def build_metrics(*, input_dir: Path, output_path: Path) -> MetricsBuildResult:

@@ -9,7 +9,7 @@ from typing import Sequence
 
 from .cli import _add_date_arguments, _resolve_date_range_from_args
 from .exports import export_sacct
-from .metrics import build_metrics
+from .metrics import build_metrics, query_metrics
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -72,6 +72,35 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Destination Parquet file for the jobs_data dataset (defaults to ./metrics/jobs_data.parquet).",
     )
 
+    metrics_query_parser = metrics_subparsers.add_parser(
+        "query",
+        help="Aggregate metrics from the jobs_data dataset.",
+    )
+    metrics_query_parser.add_argument(
+        "metric",
+        help="Metric column to aggregate (e.g., gpu_hours).",
+    )
+    metrics_query_parser.add_argument(
+        "--dataset-path",
+        type=Path,
+        default=Path("metrics") / "jobs_data.parquet",
+        help="Path to the jobs_data dataset (defaults to ./metrics/jobs_data.parquet).",
+    )
+    metrics_query_parser.add_argument(
+        "--by",
+        type=str,
+        default="",
+        help=(
+            "Comma-separated grouping columns. Supported: day, week, month, year, partition, "
+            "account, user, state. At most one time-based value is allowed and it must be first."
+        ),
+    )
+    metrics_query_parser.add_argument(
+        "--stat",
+        type=str,
+        help="Statistic to apply (default: sum). Specify mean for per-job averages.",
+    )
+
     return parser
 
 
@@ -93,6 +122,17 @@ def handle_metrics_build(args: argparse.Namespace) -> str:
     return result.as_json()
 
 
+def handle_metrics_query(args: argparse.Namespace) -> str:
+    by_values = [entry.strip() for entry in (args.by or "").split(",") if entry.strip()]
+    result = query_metrics(
+        args.metric,
+        dataset_path=args.dataset_path,
+        by=by_values,
+        stat=args.stat,
+    )
+    return result.as_json()
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -101,6 +141,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         output = handle_export_sacct(args)
     elif args.command == "metrics" and args.metrics_command == "build":
         output = handle_metrics_build(args)
+    elif args.command == "metrics" and args.metrics_command == "query":
+        output = handle_metrics_query(args)
     else:  # pragma: no cover - argparse enforces known commands
         parser.error("Unknown command")
         return

@@ -24,6 +24,19 @@ slurm-utils metrics build --input-dir sacct-exports --output-path metrics/jobs_d
 - Timestamp columns are parsed to UTC, and date buckets are derived from the end timestamp (or submit time when missing).
 - When PyArrow is unavailable the dataset is written as JSON to the same path for portability in constrained environments.
 
+## Metrics query
+
+Aggregate derived metrics from the jobs dataset:
+
+```
+slurm-utils metrics query gpu_hours --by month,account
+slurm-utils metrics query gpu_hours --by month,account --stat mean
+```
+
+- `--by` sets grouping columns. Supported values: `day`, `week`, `month`, `year`, `partition`, `account`, `user`, `state`.
+- At most one time-based value is allowed, and it must be the first entry. Time buckets are derived from `end_ts`.
+- Statistics default to `sum`. Provide `--stat mean` for per-job averages (e.g., mean GPU hours per group).
+
 ## GPU-hour calculator
 
 ```

@@ -1,7 +1,9 @@
 from pathlib import Path
 import json
 
-from slurm_cli.metrics import build_metrics
+import pytest
+
+from slurm_cli.metrics import build_metrics, query_metrics
 import slurm_cli.simple_cli as simple_cli
 
 
@@ -78,3 +80,86 @@ def test_simple_cli_metrics_build_runs(monkeypatch, tmp_path: Path):
 
     assert payload["output_path"] == str(output_path)
     assert payload["source_files"] == [str(csv_file)]
+
+
+def test_simple_cli_metrics_query_runs(tmp_path: Path):
+    dataset_path = tmp_path / "jobs_data.parquet"
+    dataset_path.write_text(
+        json.dumps(
+            [
+                {
+                    "job_id": 1,
+                    "end_ts": "2025-03-01T00:00:00+00:00",
+                    "account": "demo",
+                    "gpu_hours": 12.0,
+                }
+            ]
+        )
+    )
+
+    args = simple_cli.argparse.Namespace(
+        command="metrics",
+        metrics_command="query",
+        metric="gpu_hours",
+        dataset_path=dataset_path,
+        by="account",
+        stat=None,
+    )
+
+    payload = json.loads(simple_cli.handle_metrics_query(args))
+
+    assert payload["metric"] == "gpu_hours"
+    assert payload["stat"] == "sum"
+    assert payload["rows"] == [{"account": "demo", "gpu_hours": 12.0}]
+
+
+def test_query_metrics_groups_and_stats(tmp_path: Path):
+    dataset_path = tmp_path / "jobs_data.parquet"
+    records = [
+        {
+            "job_id": 1,
+            "end_ts": "2025-01-15T00:00:00+00:00",
+            "account": "a",
+            "partition": "p1",
+            "user_name": "u1",
+            "state": "COMPLETED",
+            "gpu_hours": 10.0,
+        },
+        {
+            "job_id": 2,
+            "end_ts": "2025-01-20T00:00:00+00:00",
+            "account": "a",
+            "partition": "p1",
+            "user_name": "u1",
+            "state": "COMPLETED",
+            "gpu_hours": 6.0,
+        },
+        {
+            "job_id": 3,
+            "end_ts": "2025-02-01T00:00:00+00:00",
+            "account": "b",
+            "partition": "p2",
+            "user_name": "u2",
+            "state": "FAILED",
+            "gpu_hours": 4.0,
+        },
+    ]
+    dataset_path.write_text(json.dumps(records))
+
+    result = query_metrics("gpu_hours", dataset_path=dataset_path, by=["month", "account"])
+    assert result.stat == "sum"
+    assert result.by == ["month", "account"]
+    assert result.rows == [
+        {"month": "2025-01", "account": "a", "gpu_hours": 16.0},
+        {"month": "2025-02", "account": "b", "gpu_hours": 4.0},
+    ]
+
+    mean_result = query_metrics("gpu_hours", dataset_path=dataset_path, by=["account"], stat="mean")
+    assert mean_result.stat == "mean"
+    assert mean_result.rows == [
+        {"account": "a", "gpu_hours": 8.0},
+        {"account": "b", "gpu_hours": 4.0},
+    ]
+
+    with pytest.raises(ValueError):
+        query_metrics("gpu_hours", dataset_path=dataset_path, by=["account", "month"])
