@@ -4,6 +4,7 @@ A lightweight command-line toolkit with two layers:
 
 - **slurm utils**: foundational, reusable calculations and exports (e.g., GPU-hour math, sacct CSV dumps).
 - **slurm app**: opinionated workflows built on the utilities for reporting.
+- **slurm-utils export-sacct**: convenience entrypoint for exporting sacct data without nested subcommands.
 
 ## Quickstart
 

@@ -15,9 +15,11 @@ SACCT_FIELDS = [
     "User",
     "Account",
     "Partition",
+    "Submit",
     "Start",
     "End",
     "State",
+    "ExitCode",
     "ElapsedRaw",
     "AllocTRES",
 ]
@@ -27,9 +29,9 @@ def _sacct_command(start: date, end: date) -> str:
     return (
         "sacct -a -X -s CA,CD,F,NF,PR,TO "
         f"-S {start.isoformat()} -E {end.isoformat()} "
-        "--format=JobIDRaw,User,Account,Partition,Start,End,State,ElapsedRaw,AllocTRES "
+        "--format=JobIDRaw,User,Account,Partition,Submit,Start,End,State,ExitCode,ElapsedRaw,AllocTRES "
         "--parsable2 --noheader --delimiter='|' "
-        "| awk -F'|' '$5 != \"None\" && $8 > 0 && $9 != \"\"'"
+        "| awk -F'|' '$6 != \"None\" && $10 > 0 && $11 != \"\"'"
     )
 
 
