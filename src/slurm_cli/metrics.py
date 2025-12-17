@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import csv
 import json
+import fnmatch
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Sequence
 
 from .dates import DateRange
 
@@ -282,6 +283,53 @@ def _validate_grouping(by: list[str]) -> tuple[Optional[str], list[str]]:
     return time_prefix, by
 
 
+def _parse_selectors(select_args: Optional[Sequence[str]]) -> list[tuple[str, str]]:
+    selectors: list[tuple[str, str]] = []
+    if not select_args:
+        return selectors
+
+    allowed_keys = {"partition", "account", "user", "state"}
+
+    for raw in select_args:
+        if not raw:
+            continue
+        for entry in raw.split(";"):
+            entry = entry.strip()
+            if not entry:
+                continue
+            if ":" not in entry:
+                raise ValueError(f"Invalid selector '{entry}'. Expected key:pattern")
+            key, pattern = entry.split(":", 1)
+            key = key.strip().lower()
+            pattern = pattern.strip()
+
+            if key not in allowed_keys:
+                raise ValueError(
+                    f"Unsupported selector key '{key}'. Allowed: {', '.join(sorted(allowed_keys))}"
+                )
+            if pattern == "":
+                raise ValueError("Selector pattern cannot be empty")
+
+            selectors.append((key, pattern))
+
+    return selectors
+
+
+def _record_matches_selectors(
+    record: dict, selectors: Sequence[tuple[str, str]], key_map: dict[str, str]
+) -> bool:
+    if not selectors:
+        return True
+
+    for key, pattern in selectors:
+        record_key = key_map.get(key, key)
+        value = record.get(record_key)
+        if not fnmatch.fnmatch(str(value or ""), pattern):
+            return False
+
+    return True
+
+
 def _is_in_date_range(end_ts: Optional[datetime], date_range: Optional[DateRange]) -> bool:
     if date_range is None:
         return True
@@ -300,6 +348,7 @@ def query_metrics(
     by: Optional[list[str]] = None,
     stat: Optional[str] = None,
     date_range: Optional[DateRange] = None,
+    selectors: Optional[Sequence[str]] = None,
 ) -> MetricsQueryResult:
     by = by or []
     stat = (stat or "sum").lower()
@@ -307,6 +356,7 @@ def query_metrics(
         raise ValueError(f"Unsupported statistic: {stat}")
 
     time_prefix, validated_by = _validate_grouping([entry.lower() for entry in by])
+    parsed_selectors = _parse_selectors(selectors)
     records = _load_jobs_dataset(dataset_path)
 
     grouping_map = {
@@ -321,6 +371,8 @@ def query_metrics(
     for record in records:
         end_ts = _normalize_ts(record.get("end_ts"))
         if not _is_in_date_range(end_ts, date_range):
+            continue
+        if not _record_matches_selectors(record, parsed_selectors, grouping_map):
             continue
 
         metric_value = record.get(metric)

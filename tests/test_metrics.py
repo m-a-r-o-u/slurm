@@ -119,6 +119,35 @@ def test_simple_cli_metrics_query_runs(tmp_path: Path):
     assert payload["rows"] == [{"account": "demo", "gpu_hours": 12.0}]
 
 
+def test_simple_cli_metrics_query_with_select(tmp_path: Path):
+    dataset_path = tmp_path / "jobs_data.parquet"
+    dataset_path.write_text(
+        json.dumps(
+            [
+                {"end_ts": "2025-03-01T00:00:00+00:00", "user_name": "keep", "gpu_hours": 2},
+                {"end_ts": "2025-03-01T00:00:00+00:00", "user_name": "skip", "gpu_hours": 5},
+            ]
+        )
+    )
+
+    args = simple_cli.argparse.Namespace(
+        command="metrics",
+        metrics_command="query",
+        metric="gpu_hours",
+        dataset_path=dataset_path,
+        by="",
+        stat=None,
+        start=None,
+        end=None,
+        date=None,
+        format="json",
+        select=["user:keep"],
+    )
+
+    payload = json.loads(simple_cli.handle_metrics_query(args))
+    assert payload["rows"] == [{"gpu_hours": 2.0}]
+
+
 def test_query_metrics_groups_and_stats(tmp_path: Path):
     dataset_path = tmp_path / "jobs_data.parquet"
     records = [
@@ -212,3 +241,61 @@ def test_query_metrics_date_filter_and_table_format(tmp_path: Path):
     table = format_query_result(result, output_format="table")
     assert "user | gpu_hours" in table
     assert "u1" in table and "u2" in table
+
+
+def test_query_metrics_select_filters(tmp_path: Path):
+    dataset_path = tmp_path / "jobs_data.parquet"
+    records = [
+        {
+            "job_id": 1,
+            "end_ts": "2025-03-01T00:00:00+00:00",
+            "partition": "mcml-hgx-h100-94x4",
+            "account": "team-a",
+            "user_name": "u1",
+            "state": "COMPLETED",
+            "gpu_hours": 10.0,
+        },
+        {
+            "job_id": 2,
+            "end_ts": "2025-03-02T00:00:00+00:00",
+            "partition": "mcml-something",
+            "account": "team-b",
+            "user_name": "u2",
+            "state": "FAILED",
+            "gpu_hours": 5.0,
+        },
+        {
+            "job_id": 3,
+            "end_ts": "2025-03-03T00:00:00+00:00",
+            "partition": "other", 
+            "account": "team-b",
+            "user_name": "u1",
+            "state": "FAILED",
+            "gpu_hours": 8.0,
+        },
+    ]
+    dataset_path.write_text(json.dumps(records))
+
+    result = query_metrics(
+        "gpu_hours",
+        dataset_path=dataset_path,
+        selectors=["partition:mcml*;user:u1"],
+    )
+
+    assert result.rows == [{"gpu_hours": 10.0}]
+
+    second = query_metrics(
+        "gpu_hours",
+        dataset_path=dataset_path,
+        selectors=["partition:mcml*", "account:team-b"],
+    )
+
+    assert result.stat == "sum"
+    assert second.rows == [{"gpu_hours": 5.0}]
+
+    with pytest.raises(ValueError):
+        query_metrics(
+            "gpu_hours",
+            dataset_path=dataset_path,
+            selectors=["unknown:*"]
+        )

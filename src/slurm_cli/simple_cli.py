@@ -100,6 +100,14 @@ def _build_parser() -> argparse.ArgumentParser:
         type=str,
         help="Statistic to apply (default: sum). Specify mean for per-job averages.",
     )
+    metrics_query_parser.add_argument(
+        "--select",
+        action="append",
+        help=(
+            "Filter jobs by key:pattern before aggregation. Supported keys: partition, account, "
+            "user, state. Multiple selectors can be separated with ';' or by repeating --select."
+        ),
+    )
     _add_date_arguments(metrics_query_parser, start_required=False)
     metrics_query_parser.add_argument(
         "--format",
@@ -140,6 +148,7 @@ def handle_metrics_query(args: argparse.Namespace) -> str:
         by=by_values,
         stat=args.stat,
         date_range=date_range,
+        selectors=getattr(args, "select", None),
     )
     return format_query_result(result, output_format=args.format)
 
