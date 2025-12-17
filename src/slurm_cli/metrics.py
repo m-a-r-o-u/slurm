@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional
 
+from .dates import DateRange
+
 
 @dataclass(frozen=True)
 class MetricsBuildResult:
@@ -50,6 +52,14 @@ class MetricsQueryResult:
             indent=2,
             default=str,
         )
+
+    def as_dict(self) -> dict:
+        return {
+            "metric": self.metric,
+            "stat": self.stat,
+            "by": self.by,
+            "rows": self.rows,
+        }
 
 
 def _parse_dt(value: str | None) -> Optional[datetime]:
@@ -272,12 +282,24 @@ def _validate_grouping(by: list[str]) -> tuple[Optional[str], list[str]]:
     return time_prefix, by
 
 
+def _is_in_date_range(end_ts: Optional[datetime], date_range: Optional[DateRange]) -> bool:
+    if date_range is None:
+        return True
+
+    if end_ts is None:
+        return False
+
+    end_date = end_ts.date()
+    return date_range.start <= end_date <= date_range.end
+
+
 def query_metrics(
     metric: str,
     *,
     dataset_path: Path,
     by: Optional[list[str]] = None,
     stat: Optional[str] = None,
+    date_range: Optional[DateRange] = None,
 ) -> MetricsQueryResult:
     by = by or []
     stat = (stat or "sum").lower()
@@ -297,6 +319,10 @@ def query_metrics(
     aggregates: dict[tuple, dict[str, float]] = {}
 
     for record in records:
+        end_ts = _normalize_ts(record.get("end_ts"))
+        if not _is_in_date_range(end_ts, date_range):
+            continue
+
         metric_value = record.get(metric)
         if metric_value is None:
             continue
@@ -306,7 +332,6 @@ def query_metrics(
             continue
 
         key_parts: list[object] = []
-        end_ts = _normalize_ts(record.get("end_ts"))
         for group in validated_by:
             if group == time_prefix:
                 key_parts.append(_derive_time_bucket(end_ts, group))
@@ -334,6 +359,35 @@ def query_metrics(
     rows.sort(key=lambda item: tuple(item.get(group) for group in validated_by))
 
     return MetricsQueryResult(metric=metric, stat=stat, by=validated_by, rows=rows)
+
+
+def format_query_result(result: MetricsQueryResult, *, output_format: str = "json") -> str:
+    output_format = output_format.lower()
+    if output_format == "json":
+        return result.as_json()
+    if output_format == "yaml":
+        import yaml
+
+        return yaml.safe_dump(result.as_dict(), sort_keys=False)
+    if output_format == "table":
+        columns = result.by + [result.metric]
+        widths: dict[str, int] = {}
+        for column in columns:
+            candidates = [len(column)]
+            candidates.extend(len(str(row.get(column, ""))) for row in result.rows)
+            widths[column] = max(candidates)
+
+        header = " | ".join(column.ljust(widths[column]) for column in columns)
+        separator = "-+-".join("-" * widths[column] for column in columns)
+
+        lines = [header, separator]
+        for row in result.rows:
+            line = " | ".join(str(row.get(column, "")).ljust(widths[column]) for column in columns)
+            lines.append(line)
+
+        return "\n".join(lines)
+
+    raise ValueError(f"Unsupported format: {output_format}")
 
 
 def build_metrics(*, input_dir: Path, output_path: Path) -> MetricsBuildResult:

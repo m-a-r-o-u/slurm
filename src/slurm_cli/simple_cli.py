@@ -9,7 +9,7 @@ from typing import Sequence
 
 from .cli import _add_date_arguments, _resolve_date_range_from_args
 from .exports import export_sacct
-from .metrics import build_metrics, query_metrics
+from .metrics import build_metrics, format_query_result, query_metrics
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -100,6 +100,13 @@ def _build_parser() -> argparse.ArgumentParser:
         type=str,
         help="Statistic to apply (default: sum). Specify mean for per-job averages.",
     )
+    _add_date_arguments(metrics_query_parser, start_required=False)
+    metrics_query_parser.add_argument(
+        "--format",
+        choices=["json", "yaml", "table"],
+        default="json",
+        help="Output format for query results (json, yaml, table).",
+    )
 
     return parser
 
@@ -124,13 +131,17 @@ def handle_metrics_build(args: argparse.Namespace) -> str:
 
 def handle_metrics_query(args: argparse.Namespace) -> str:
     by_values = [entry.strip() for entry in (args.by or "").split(",") if entry.strip()]
+    date_range = None
+    if getattr(args, "date", None) or getattr(args, "start", None):
+        date_range = _resolve_date_range_from_args(args)
     result = query_metrics(
         args.metric,
         dataset_path=args.dataset_path,
         by=by_values,
         stat=args.stat,
+        date_range=date_range,
     )
-    return result.as_json()
+    return format_query_result(result, output_format=args.format)
 
 
 def main(argv: Sequence[str] | None = None) -> None:

@@ -1,9 +1,11 @@
+from datetime import date
 from pathlib import Path
 import json
 
 import pytest
 
-from slurm_cli.metrics import build_metrics, query_metrics
+from slurm_cli.dates import DateRange
+from slurm_cli.metrics import build_metrics, format_query_result, query_metrics
 import slurm_cli.simple_cli as simple_cli
 
 
@@ -104,6 +106,10 @@ def test_simple_cli_metrics_query_runs(tmp_path: Path):
         dataset_path=dataset_path,
         by="account",
         stat=None,
+        start=None,
+        end=None,
+        date=None,
+        format="json",
     )
 
     payload = json.loads(simple_cli.handle_metrics_query(args))
@@ -163,3 +169,46 @@ def test_query_metrics_groups_and_stats(tmp_path: Path):
 
     with pytest.raises(ValueError):
         query_metrics("gpu_hours", dataset_path=dataset_path, by=["account", "month"])
+
+
+def test_query_metrics_date_filter_and_table_format(tmp_path: Path):
+    dataset_path = tmp_path / "jobs_data.parquet"
+    records = [
+        {
+            "job_id": 1,
+            "end_ts": "2025-03-01T00:00:00+00:00",
+            "account": "demo",
+            "user_name": "u1",
+            "gpu_hours": 10.0,
+        },
+        {
+            "job_id": 2,
+            "end_ts": "2025-03-05T00:00:00+00:00",
+            "account": "demo",
+            "user_name": "u2",
+            "gpu_hours": 5.0,
+        },
+        {
+            "job_id": 3,
+            "end_ts": "2025-04-01T00:00:00+00:00",
+            "account": "demo",
+            "user_name": "u3",
+            "gpu_hours": 20.0,
+        },
+    ]
+    dataset_path.write_text(json.dumps(records))
+
+    date_range = DateRange(start=date(2025, 3, 1), end=date(2025, 3, 31))
+    result = query_metrics(
+        "gpu_hours",
+        dataset_path=dataset_path,
+        by=["user"],
+        date_range=date_range,
+    )
+
+    assert len(result.rows) == 2
+    assert {row["user"] for row in result.rows} == {"u1", "u2"}
+
+    table = format_query_result(result, output_format="table")
+    assert "user | gpu_hours" in table
+    assert "u1" in table and "u2" in table
