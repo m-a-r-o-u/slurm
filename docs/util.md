@@ -11,6 +11,19 @@ Every utility command accepts two ways to pick dates:
 
 Date ranges are inclusive when calculating totals, and sacct exports run for each day in the range.
 
+## Metrics update
+
+Turn sacct CSV exports into analytics-ready Parquet datasets:
+
+```
+slurm-utils metrics update --input-dir sacct-exports --output-path metrics/jobs_data.parquet
+```
+
+- The command is idempotent: rerunning it rewrites `jobs_data.parquet` from the current CSV files.
+- Derived fields include waiting time, GPU hours, GPU/CPU counts, and convenience booleans (`is_gpu_job`, `is_failed`, `is_wasted`).
+- Timestamp columns are parsed to UTC, and date buckets are derived from the end timestamp (or submit time when missing).
+- When PyArrow is unavailable the dataset is written as JSON to the same path for portability in constrained environments.
+
 ## GPU-hour calculator
 
 ```

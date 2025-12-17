@@ -1,0 +1,80 @@
+from pathlib import Path
+import json
+
+from slurm_cli.metrics import update_metrics
+import slurm_cli.simple_cli as simple_cli
+
+
+CSV_SAMPLE = """JobIDRaw,User,Account,Partition,Submit,Start,End,State,ExitCode,ElapsedRaw,AllocTRES
+5362466,di35qir2,default,mcml-hgx-h100-94x4,2025-10-26T16:20:17,2025-10-30T20:12:14,2025-11-01T20:12:40,TIMEOUT,0:0,172826,"billing=614560,cpu=40,gres/gpu=4,mem=300G,node=1"
+7000000,ab12cd,default,lrz,2025-01-01T00:00:00,,,COMPLETED,0:0,3600,"billing=10,cpu=2,mem=2G,node=1"
+"""
+
+
+def test_update_metrics_builds_parquet(tmp_path: Path):
+    csv_path = tmp_path / "sacct-exports"
+    csv_path.mkdir()
+    source_file = csv_path / "2025-10-26.csv"
+    source_file.write_text(CSV_SAMPLE)
+
+    output_path = tmp_path / "metrics" / "jobs_data.parquet"
+
+    result = update_metrics(input_dir=csv_path, output_path=output_path)
+
+    assert result.output_path == output_path
+    assert result.source_files == [source_file]
+    assert result.rows_written == 2
+    assert output_path.exists()
+    assert result.storage_format in {"parquet", "json"}
+
+    raw_payload = output_path.read_text()
+    records = json.loads(raw_payload)
+    rows = {row["job_id"]: row for row in records}
+
+    first = rows[5362466]
+    assert first["gpu_count"] == 4
+    assert first["cpu_count"] == 40
+    assert first["mem_req_mb"] == 307200
+    assert round(first["gpu_hours"], 3) == round(172826 / 3600 * 4, 3)
+    assert first["wait_s"] == 359517
+    assert first["date_key"] == "2025-11-01"
+    assert first["is_failed"] is True
+    assert first["is_wasted"] is True
+    assert str(first["__source_file"]).endswith("2025-10-26.csv")
+
+    second = rows[7000000]
+    assert second["gpu_count"] == 0
+    assert second["start_ts"] is None
+    assert second["end_ts"] is None
+    assert second["wait_s"] is None
+    assert second["date_key"] == "2025-01-01"
+    assert second["is_gpu_job"] is False
+    assert second["is_failed"] is False
+    assert second["is_wasted"] is False
+
+
+def test_simple_cli_metrics_update_runs(monkeypatch, tmp_path: Path):
+    output_path = tmp_path / "jobs_data.parquet"
+
+    from slurm_cli import metrics as metrics_module
+
+    def fake_update_metrics(*, input_dir, output_path):
+        assert input_dir == tmp_path
+        return metrics_module.update_metrics(input_dir=input_dir, output_path=output_path)
+
+    csv_file = tmp_path / "2024-01-01.csv"
+    csv_file.write_text(CSV_SAMPLE)
+
+    args = simple_cli.argparse.Namespace(
+        command="metrics",
+        metrics_command="update",
+        input_dir=tmp_path,
+        output_path=output_path,
+    )
+
+    monkeypatch.setattr(simple_cli, "update_metrics", fake_update_metrics)
+
+    payload = json.loads(simple_cli.handle_metrics_update(args))
+
+    assert payload["output_path"] == str(output_path)
+    assert payload["source_files"] == [str(csv_file)]
