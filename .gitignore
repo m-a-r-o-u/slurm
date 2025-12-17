@@ -2,3 +2,56 @@ __pycache__/
 *.pyc
 .venv/
 .env
+
+# -------------------------
+# Python build artifacts
+# -------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# setuptools / packaging
+*.egg
+*.egg-info/
+dist/
+build/
+
+# -------------------------
+# Virtual environments
+# -------------------------
+.venv/
+venv/
+env/
+
+# -------------------------
+# Testing / coverage
+# -------------------------
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# -------------------------
+# Logs & runtime data
+# -------------------------
+*.log
+
+# Generated sacct exports (runtime data)
+sacct-exports/
+
+# -------------------------
+# IDE / editor noise
+# -------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# -------------------------
+# OS-specific
+# -------------------------
+.DS_Store
+Thumbs.db
+*~
