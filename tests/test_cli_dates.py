@@ -7,19 +7,21 @@ from slurm_cli.cli import _resolve_date_range_from_args
 
 class ResolveDateRangeFromArgsTests(unittest.TestCase):
     def test_prefers_date_argument(self):
-        args = argparse.Namespace(date="2024", start=None, end=None)
+        args = argparse.Namespace(date="2024", start=None, end=None, reference_date=date(2025, 1, 2))
         rng = _resolve_date_range_from_args(args)
         self.assertEqual(rng.start, date(2024, 1, 1))
         self.assertEqual(rng.end, date(2024, 12, 31))
 
     def test_uses_start_and_end_when_provided(self):
-        args = argparse.Namespace(date=None, start="2024-03-01", end="2024-03-10")
+        args = argparse.Namespace(
+            date=None, start="2024-03-01", end="2024-03-10", reference_date=date(2024, 12, 31)
+        )
         rng = _resolve_date_range_from_args(args)
         self.assertEqual(rng.start, date(2024, 3, 1))
         self.assertEqual(rng.end, date(2024, 3, 10))
 
     def test_missing_date_values_raise(self):
-        args = argparse.Namespace(date=None, start=None, end=None)
+        args = argparse.Namespace(date=None, start=None, end=None, reference_date=date(2024, 1, 1))
         with self.assertRaises(SystemExit):
             _resolve_date_range_from_args(args)
 

@@ -18,6 +18,7 @@ classifiers = [
 
 [project.scripts]
 slurm = "slurm_cli.cli:main"
+slurm-utils = "slurm_cli.simple_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
