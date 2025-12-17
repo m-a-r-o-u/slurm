@@ -38,7 +38,7 @@ slurm-utils metrics query gpu_hours --date 2025-03 --format table
 - At most one time-based value is allowed, and it must be the first entry. Time buckets are derived from `end_ts`.
 - Statistics default to `sum`. Provide `--stat mean` for per-job averages (e.g., mean GPU hours per group).
 - Optional date selectors `--date`, `--start`, and `--end` reuse the sacct export rules to limit which jobs to aggregate, based on `end_ts`.
-- Use `--format` to switch output rendering: `json` (default), `yaml`, or a plaintext `table` layout for quick inspection.
+- Use `--format` to switch output rendering: `json` (default), `yaml`, `csv`, or a plaintext `table` layout for quick inspection.
 - Add `--select` to pre-filter jobs with shell-style patterns before aggregation. Supported keys: `partition`, `account`, `user`, `state`. Combine selectors with `;` in a single flag or repeat `--select` to AND multiple filters (e.g., `--select partition:mcml*;user:di38qex`).
 
 ## GPU-hour calculator

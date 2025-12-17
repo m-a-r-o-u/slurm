@@ -243,6 +243,39 @@ def test_query_metrics_date_filter_and_table_format(tmp_path: Path):
     assert "u1" in table and "u2" in table
 
 
+def test_query_metrics_csv_format(tmp_path: Path):
+    dataset_path = tmp_path / "jobs_data.parquet"
+    records = [
+        {
+            "job_id": 1,
+            "end_ts": "2025-03-01T00:00:00+00:00",
+            "month": "2025-03",
+            "user_name": "u1",
+            "gpu_hours": 10.0,
+        },
+        {
+            "job_id": 2,
+            "end_ts": "2025-03-02T00:00:00+00:00",
+            "month": "2025-03",
+            "user_name": "u2",
+            "gpu_hours": 5.0,
+        },
+    ]
+    dataset_path.write_text(json.dumps(records))
+
+    result = query_metrics(
+        "gpu_hours",
+        dataset_path=dataset_path,
+        by=["month", "user"],
+    )
+
+    csv_output = format_query_result(result, output_format="csv")
+    lines = csv_output.splitlines()
+    assert lines[0] == "month,user,gpu_hours"
+    assert "2025-03,u1,10.0" in lines
+    assert "2025-03,u2,5.0" in lines
+
+
 def test_query_metrics_select_filters(tmp_path: Path):
     dataset_path = tmp_path / "jobs_data.parquet"
     records = [

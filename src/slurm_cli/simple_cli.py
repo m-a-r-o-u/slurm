@@ -111,9 +111,9 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_date_arguments(metrics_query_parser, start_required=False)
     metrics_query_parser.add_argument(
         "--format",
-        choices=["json", "yaml", "table"],
+        choices=["json", "yaml", "table", "csv"],
         default="json",
-        help="Output format for query results (json, yaml, table).",
+        help="Output format for query results (json, yaml, table, csv).",
     )
 
     return parser

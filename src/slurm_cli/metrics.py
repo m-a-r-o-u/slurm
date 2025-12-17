@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import json
 import fnmatch
+import io
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -421,6 +422,14 @@ def format_query_result(result: MetricsQueryResult, *, output_format: str = "jso
         import yaml
 
         return yaml.safe_dump(result.as_dict(), sort_keys=False)
+    if output_format == "csv":
+        columns = result.by + [result.metric]
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=columns)
+        writer.writeheader()
+        for row in result.rows:
+            writer.writerow({column: row.get(column, "") for column in columns})
+        return buffer.getvalue().strip()
     if output_format == "table":
         columns = result.by + [result.metric]
         widths: dict[str, int] = {}
