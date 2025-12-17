@@ -17,7 +17,7 @@ def _runner_factory(outputs, commands):
 def test_sacct_export_writes_daily_files(tmp_path):
     date_range = DateRange(start=date(2025, 12, 1), end=date(2025, 12, 2))
     outputs = [
-        "1|alice|acct|gpu|2025-12-01T00:30:00|2025-12-01T01:00:00|2025-12-01T02:00:00|F|3600|gres/gpu=1",
+        "1|alice|acct|gpu|2025-12-01T00:30:00|2025-12-01T01:00:00|2025-12-01T02:00:00|F|0:0|3600|gres/gpu=1",
         "",
     ]
     commands: list[str] = []
