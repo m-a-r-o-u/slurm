@@ -61,13 +61,21 @@ def plot_gpu_hours_horizontal_bar(
         fontsize=13,
         labelpad=8,
         fontfamily="monospace",
+        fontweight="bold",
     )
-    ax.set_ylabel("Project", fontsize=13, labelpad=10, fontfamily="monospace")
+    ax.set_ylabel(
+        "Project",
+        fontsize=13,
+        labelpad=10,
+        fontfamily="monospace",
+        fontweight="bold",
+    )
     ax.set_title(
         f"GPU hours per project{title_suffix}",
         fontsize=15,
         pad=10,
         fontfamily="monospace",
+        fontweight="bold",
     )
 
     ax.tick_params(axis="y", labelsize=11)
