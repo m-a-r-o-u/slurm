@@ -146,7 +146,7 @@ def plot_gpu_hours_donut_chart(
         if normalized:
             return f"{pct:.1f}%"
         value = (pct / 100) * total
-        return f"{value:,.0f}h"
+        return f"{value:,.1f}h"
 
     wedges, texts, autotexts = ax.pie(
         chart_values,
@@ -167,7 +167,7 @@ def plot_gpu_hours_donut_chart(
     ax.set_title(
         f"GPU hours per project{title_suffix}",
         fontsize=16,
-        pad=14,
+        pad=6,
         fontfamily="monospace",
         fontweight="bold",
     )
