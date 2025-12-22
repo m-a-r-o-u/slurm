@@ -48,6 +48,9 @@ def plot_gpu_hours_horizontal_bar(
     if sort_order == "desc":
         ax.invert_yaxis()
 
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
     ax.set_xlabel(
         "GPU hours (%)" if normalized else "GPU hours",
         fontsize=13,
