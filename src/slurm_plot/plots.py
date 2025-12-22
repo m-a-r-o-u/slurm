@@ -40,18 +40,32 @@ def plot_gpu_hours_horizontal_bar(
 
     figure_height = max(6.5, 0.4 * len(labels) + 1.0)
     fig, ax = plt.subplots(figsize=(11.0, figure_height))
+    ax.set_facecolor("white")
+    fig.patch.set_facecolor("white")
 
     ax.barh(labels, values, color="#1f77b4")
 
     if sort_order == "desc":
         ax.invert_yaxis()
 
-    ax.set_xlabel("GPU hours (%)" if normalized else "GPU hours", fontsize=13, labelpad=8)
-    ax.set_ylabel("Project", fontsize=13, labelpad=10)
-    ax.set_title(f"GPU hours per project{sort_descriptor}", fontsize=15, pad=10)
+    ax.set_xlabel(
+        "GPU hours (%)" if normalized else "GPU hours",
+        fontsize=13,
+        labelpad=8,
+        fontfamily="monospace",
+    )
+    ax.set_ylabel("Project", fontsize=13, labelpad=10, fontfamily="monospace")
+    ax.set_title(
+        f"GPU hours per project{sort_descriptor}",
+        fontsize=15,
+        pad=10,
+        fontfamily="monospace",
+    )
 
     ax.tick_params(axis="y", labelsize=11)
     ax.tick_params(axis="x", labelsize=11)
+    for label in ax.get_xticklabels() + ax.get_yticklabels():
+        label.set_fontfamily("monospace")
     ax.margins(y=0.01)
 
     fig.tight_layout(pad=0.4)
