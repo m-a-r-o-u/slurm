@@ -20,6 +20,7 @@ def plot_gpu_hours_horizontal_bar(
     *,
     normalized: bool,
     sort_order: str,
+    title: str | None,
     output_path: str,
 ) -> None:
     rows = list(data)
@@ -35,9 +36,7 @@ def plot_gpu_hours_horizontal_bar(
             raise ValueError("Total GPU hours are zero; cannot normalize.")
         values = [(value / total) * 100 for value in values]
 
-    sort_descriptor = ""
-    if sort_order:
-        sort_descriptor = f" (sorted {sort_order})"
+    title_suffix = f" ({title})" if title else ""
 
     figure_height = max(6.5, 0.4 * len(labels) + 1.0)
     fig, ax = plt.subplots(figsize=(11.0, figure_height))
@@ -65,7 +64,7 @@ def plot_gpu_hours_horizontal_bar(
     )
     ax.set_ylabel("Project", fontsize=13, labelpad=10, fontfamily="monospace")
     ax.set_title(
-        f"GPU hours per project{sort_descriptor}",
+        f"GPU hours per project{title_suffix}",
         fontsize=15,
         pad=10,
         fontfamily="monospace",

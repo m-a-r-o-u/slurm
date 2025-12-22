@@ -130,6 +130,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Plot only the first N projects after sorting.",
     )
+    bar_parser.add_argument(
+        "--title",
+        type=str,
+        help="Optional title suffix to include in parentheses.",
+    )
 
     return parser
 
@@ -144,6 +149,7 @@ def handle_horizontal_bar_chart(args: argparse.Namespace) -> str:
         ordered,
         normalized=args.norm,
         sort_order=args.sort,
+        title=args.title,
         output_path=args.output,
     )
 
