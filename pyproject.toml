@@ -17,11 +17,13 @@ classifiers = [
 ]
 dependencies = [
     "PyYAML>=6",
+    "matplotlib>=3.7",
 ]
 
 [project.scripts]
 slurm = "slurm_cli.cli:main"
 slurm-utils = "slurm_cli.simple_cli:main"
+slurm-plot = "slurm_plot.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
