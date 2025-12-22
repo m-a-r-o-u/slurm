@@ -146,7 +146,8 @@ def plot_gpu_hours_donut_chart(
         if normalized:
             return f"{pct:.1f}%"
         value = (pct / 100) * total
-        return f"{value:,.1f}h"
+        value_thousands = round(value / 1000)
+        return f"{value_thousands:.0f}k"
 
     wedges, texts, autotexts = ax.pie(
         chart_values,
