@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -43,13 +44,18 @@ def plot_gpu_hours_horizontal_bar(
     ax.set_facecolor("white")
     fig.patch.set_facecolor("white")
 
-    ax.barh(labels, values, color="#1f77b4")
+    positions = np.arange(len(labels))
+    ax.barh(positions, values, color="#1f77b4")
+    ax.set_yticks(positions, labels)
 
     if sort_order == "desc":
         ax.invert_yaxis()
 
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.set_ylim(-0.5, len(labels) - 0.5)
+    ax.xaxis.grid(True, linestyle="--", linewidth=0.6, alpha=0.4, color="#6b7280")
+    ax.set_axisbelow(True)
 
     ax.set_xlabel(
         "GPU hours (%)" if normalized else "GPU hours",
