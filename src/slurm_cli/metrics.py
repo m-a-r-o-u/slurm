@@ -64,6 +64,31 @@ class MetricsQueryResult:
         }
 
 
+@dataclass(frozen=True)
+class AccountsWorkaroundResult:
+    """Summary of the temporary account remapping workaround."""
+
+    dataset_path: Path
+    output_path: Path
+    rows_scanned: int
+    rows_updated: int
+    users_remapped: list[str]
+    storage_format: str
+
+    def as_json(self) -> str:
+        return json.dumps(
+            {
+                "dataset_path": str(self.dataset_path),
+                "output_path": str(self.output_path),
+                "rows_scanned": self.rows_scanned,
+                "rows_updated": self.rows_updated,
+                "users_remapped": self.users_remapped,
+                "storage_format": self.storage_format,
+            },
+            indent=2,
+        )
+
+
 def _parse_dt(value: str | None) -> Optional[datetime]:
     if not value:
         return None
@@ -463,5 +488,59 @@ def build_metrics(*, input_dir: Path, output_path: Path) -> MetricsBuildResult:
         source_files=csv_files,
         output_path=output_path,
         rows_written=len(jobs),
+        storage_format=storage_format,
+    )
+
+
+def _load_user_project_map(path: Path) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    with path.open(encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            user, account = parts[0], parts[1]
+            mapping[user] = account
+    return mapping
+
+
+def apply_accounts_workaround(
+    *,
+    dataset_path: Path,
+    mapping_path: Path,
+    output_path: Optional[Path] = None,
+) -> AccountsWorkaroundResult:
+    """Temporary workaround to remap default accounts using a user-project mapping."""
+
+    records = _load_jobs_dataset(dataset_path)
+    mapping = _load_user_project_map(mapping_path)
+    target_path = output_path or dataset_path
+    remapped_users: set[str] = set()
+    rows_updated = 0
+
+    for record in records:
+        user_name = record.get("user_name")
+        if not user_name:
+            continue
+        mapped_account = mapping.get(user_name)
+        if not mapped_account:
+            continue
+        current_account = record.get("account")
+        if current_account and str(current_account).lower() != "default":
+            continue
+        record["account"] = mapped_account
+        remapped_users.add(user_name)
+        rows_updated += 1
+
+    storage_format = _write_jobs_dataset(records, target_path)
+    return AccountsWorkaroundResult(
+        dataset_path=dataset_path,
+        output_path=target_path,
+        rows_scanned=len(records),
+        rows_updated=rows_updated,
+        users_remapped=sorted(remapped_users),
         storage_format=storage_format,
     )
