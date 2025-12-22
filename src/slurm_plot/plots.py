@@ -112,7 +112,7 @@ def plot_gpu_hours_donut_chart(
         else:
             major_rows.append(row)
 
-    major_rows.sort(key=lambda item: item.value, reverse=True)
+    major_rows.sort(key=lambda item: item.value)
 
     chart_rows: list[BarChartData] = []
     if others_total > 0:
@@ -163,6 +163,7 @@ def plot_gpu_hours_donut_chart(
     for text in texts + autotexts:
         text.set_fontfamily("monospace")
         text.set_fontsize(12)
+        text.set_fontweight("bold")
     ax.set_title(
         f"GPU hours per project{title_suffix}",
         fontsize=16,
