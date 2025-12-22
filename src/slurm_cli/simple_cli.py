@@ -9,7 +9,12 @@ from typing import Sequence
 
 from .cli import _add_date_arguments, _resolve_date_range_from_args
 from .exports import export_sacct
-from .metrics import build_metrics, format_query_result, query_metrics
+from .metrics import (
+    apply_accounts_workaround,
+    build_metrics,
+    format_query_result,
+    query_metrics,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -116,6 +121,31 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format for query results (json, yaml, table, csv).",
     )
 
+    metrics_accounts_parser = metrics_subparsers.add_parser(
+        "accounts-work-around",
+        help="Temporary workaround to update default accounts from a user map.",
+    )
+    metrics_accounts_parser.add_argument(
+        "--ifile",
+        dest="mapping_path",
+        type=Path,
+        required=True,
+        help="Path to the user-to-project mapping file.",
+    )
+    metrics_accounts_parser.add_argument(
+        "--dataset-path",
+        type=Path,
+        default=Path("metrics") / "jobs_data.parquet",
+        help="Path to the jobs_data dataset (defaults to ./metrics/jobs_data.parquet).",
+    )
+    metrics_accounts_parser.add_argument(
+        "--output-path",
+        type=Path,
+        help=(
+            "Optional output path for the updated dataset. Defaults to overwriting --dataset-path."
+        ),
+    )
+
     return parser
 
 
@@ -153,6 +183,15 @@ def handle_metrics_query(args: argparse.Namespace) -> str:
     return format_query_result(result, output_format=args.format)
 
 
+def handle_metrics_accounts_work_around(args: argparse.Namespace) -> str:
+    result = apply_accounts_workaround(
+        dataset_path=args.dataset_path,
+        mapping_path=args.mapping_path,
+        output_path=args.output_path,
+    )
+    return result.as_json()
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -163,6 +202,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         output = handle_metrics_build(args)
     elif args.command == "metrics" and args.metrics_command == "query":
         output = handle_metrics_query(args)
+    elif args.command == "metrics" and args.metrics_command == "accounts-work-around":
+        output = handle_metrics_accounts_work_around(args)
     else:  # pragma: no cover - argparse enforces known commands
         parser.error("Unknown command")
         return
