@@ -64,9 +64,11 @@ def test_handle_project_information_combines_sources(tmp_path: Path) -> None:
     rows = _read_csv(output_path)
     assert rows[0] == ["ProjectID", "PI", "GPU hours", "DSS Assigned", "DSS Used"]
     assert rows[1][0] == "pn25da"
+    assert rows[1][1] == "Univ.Prof.Dr. Stefan Feuerriegel"
     assert rows[1][2] == "13"
     assert rows[1][3:] == ["4500", "3824"]
     assert rows[2][0] == "pn25ju"
+    assert rows[2][1] == "Univ.Prof. Frauke Kreuter"
     assert rows[2][2] == "8"
     assert rows[2][3:] == ["6500", "6018"]
 
@@ -115,4 +117,4 @@ def test_handle_project_information_markdown_output(tmp_path: Path) -> None:
     lines = output_path.read_text(encoding="utf-8").splitlines()
     assert lines[0] == "| ProjectID | PI |"
     assert lines[1] == "| --- | --- |"
-    assert lines[2] == "| pn25da | Univ.Prof.Dr. Stefan Feuerriegel (ra52med) |"
+    assert lines[2] == "| pn25da | Univ.Prof.Dr. Stefan Feuerriegel |"

@@ -100,6 +100,8 @@ def _load_project_pi(input_path: str) -> dict[str, str]:
                 continue
             project_id = parts[0]
             pi = " ".join(parts[1:]).strip()
+            if pi.endswith(")") and "(" in pi:
+                pi = pi.rsplit("(", 1)[0].strip()
             mapping[project_id] = pi if pi else "N/A"
     return mapping
 
