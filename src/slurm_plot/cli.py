@@ -19,6 +19,13 @@ class GpuHoursRecord:
     gpu_hours: float
 
 
+@dataclass(frozen=True)
+class DssUsageRecord:
+    project: str
+    assigned_gb: str
+    used_gb: str
+
+
 def _parse_bool(value: str) -> bool:
     value_lower = value.strip().lower()
     if value_lower in {"true", "1", "yes", "y"}:
@@ -62,6 +69,59 @@ def _load_gpu_hours(csv_content: str) -> list[GpuHoursRecord]:
 
     if not records:
         raise SystemExit("No valid rows found in the CSV data.")
+
+    return records
+
+
+def _load_gpu_hours_by_project(input_path: str) -> dict[str, float]:
+    with open(input_path, "r", encoding="utf-8") as handle:
+        csv_content = handle.read()
+    records = _load_gpu_hours(csv_content)
+    totals: dict[str, float] = defaultdict(float)
+    for record in records:
+        totals[record.account] += record.gpu_hours
+    return totals
+
+
+def _load_project_pi(input_path: str) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    with open(input_path, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if not parts:
+                continue
+            project_id = parts[0]
+            pi = " ".join(parts[1:]).strip()
+            mapping[project_id] = pi if pi else "N/A"
+    return mapping
+
+
+def _load_dss_usage(input_path: str) -> dict[str, DssUsageRecord]:
+    with open(input_path, "r", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise SystemExit("DSS CSV data is missing headers.")
+
+        required_fields = {"Project", "Assigned GB", "Used GB"}
+        if not required_fields.issubset(set(reader.fieldnames)):
+            missing = ", ".join(sorted(required_fields.difference(set(reader.fieldnames))))
+            raise SystemExit(f"DSS CSV data missing required columns: {missing}")
+
+        records: dict[str, DssUsageRecord] = {}
+        for row in reader:
+            project = str(row.get("Project", "")).strip()
+            if not project:
+                continue
+            assigned = str(row.get("Assigned GB", "")).strip() or "N/A"
+            used = str(row.get("Used GB", "")).strip() or "N/A"
+            records[project] = DssUsageRecord(
+                project=project,
+                assigned_gb=assigned,
+                used_gb=used,
+            )
 
     return records
 
@@ -163,6 +223,32 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional title suffix to include in parentheses.",
     )
 
+    info_parser = subparsers.add_parser(
+        "project-information",
+        help="Generate a project information table for PI, GPU hours, and DSS usage.",
+    )
+    info_parser.add_argument(
+        "--input-pi",
+        type=str,
+        help="Path to a text file with project IDs and PI names.",
+    )
+    info_parser.add_argument(
+        "--input-gpuh",
+        type=str,
+        help="Path to a CSV file with year, account, and gpu_hours columns.",
+    )
+    info_parser.add_argument(
+        "--input-dss",
+        type=str,
+        help="Path to a CSV file with DSS storage columns.",
+    )
+    info_parser.add_argument(
+        "--output",
+        type=str,
+        default="project-information.csv",
+        help="Output path for the generated CSV table.",
+    )
+
     return parser
 
 
@@ -199,6 +285,49 @@ def handle_donut_chart(args: argparse.Namespace) -> str:
     return args.output
 
 
+def handle_project_information(args: argparse.Namespace) -> str:
+    pi_mapping = _load_project_pi(args.input_pi) if args.input_pi else {}
+    gpu_hours_mapping = (
+        _load_gpu_hours_by_project(args.input_gpuh) if args.input_gpuh else {}
+    )
+    dss_mapping = _load_dss_usage(args.input_dss) if args.input_dss else {}
+
+    if not (pi_mapping or gpu_hours_mapping or dss_mapping):
+        raise SystemExit("Provide at least one input file.")
+
+    project_ids = sorted(set(pi_mapping) | set(gpu_hours_mapping) | set(dss_mapping))
+
+    header = ["ProjectID"]
+    if args.input_pi:
+        header.append("PI")
+    if args.input_gpuh:
+        header.append("GPU hours")
+    if args.input_dss:
+        header.extend(["DSS Assigned", "DSS Used"])
+
+    with open(args.output, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(header)
+        for project_id in project_ids:
+            row = [project_id]
+            if args.input_pi:
+                row.append(pi_mapping.get(project_id, "N/A"))
+            if args.input_gpuh:
+                if project_id in gpu_hours_mapping:
+                    row.append(str(gpu_hours_mapping[project_id]))
+                else:
+                    row.append("N/A")
+            if args.input_dss:
+                record = dss_mapping.get(project_id)
+                if record:
+                    row.extend([record.assigned_gb, record.used_gb])
+                else:
+                    row.extend(["N/A", "N/A"])
+            writer.writerow(row)
+
+    return args.output
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -207,6 +336,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         output = handle_horizontal_bar_chart(args)
     elif args.command == "donut-chart-gpuhours":
         output = handle_donut_chart(args)
+    elif args.command == "project-information":
+        output = handle_project_information(args)
     else:  # pragma: no cover - argparse enforces known commands
         parser.error("Unknown command")
         return
