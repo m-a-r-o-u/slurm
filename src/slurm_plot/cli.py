@@ -8,6 +8,7 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from io import StringIO
+import math
 from typing import Iterable, Sequence
 
 from .plots import BarChartData, plot_gpu_hours_donut_chart, plot_gpu_hours_horizontal_bar
@@ -81,6 +82,10 @@ def _load_gpu_hours_by_project(input_path: str) -> dict[str, float]:
     for record in records:
         totals[record.account] += record.gpu_hours
     return totals
+
+
+def _round_hours(value: float) -> int:
+    return int(math.floor(value + 0.5))
 
 
 def _load_project_pi(input_path: str) -> dict[str, str]:
@@ -314,7 +319,7 @@ def handle_project_information(args: argparse.Namespace) -> str:
                 row.append(pi_mapping.get(project_id, "N/A"))
             if args.input_gpuh:
                 if project_id in gpu_hours_mapping:
-                    row.append(str(gpu_hours_mapping[project_id]))
+                    row.append(str(_round_hours(gpu_hours_mapping[project_id])))
                 else:
                     row.append("N/A")
             if args.input_dss:

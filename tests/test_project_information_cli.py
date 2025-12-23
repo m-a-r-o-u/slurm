@@ -63,10 +63,10 @@ def test_handle_project_information_combines_sources(tmp_path: Path) -> None:
     rows = _read_csv(output_path)
     assert rows[0] == ["ProjectID", "PI", "GPU hours", "DSS Assigned", "DSS Used"]
     assert rows[1][0] == "pn25da"
-    assert rows[1][2] == "12.5"
+    assert rows[1][2] == "13"
     assert rows[1][3:] == ["4500", "3824"]
     assert rows[2][0] == "pn25ju"
-    assert rows[2][2] == "7.75"
+    assert rows[2][2] == "8"
     assert rows[2][3:] == ["6500", "6018"]
 
 
