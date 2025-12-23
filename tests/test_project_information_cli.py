@@ -56,6 +56,7 @@ def test_handle_project_information_combines_sources(tmp_path: Path) -> None:
         input_gpuh=str(gpu_path),
         input_dss=str(dss_path),
         output=str(output_path),
+        format="csv",
     )
 
     assert plot_cli.handle_project_information(args) == str(output_path)
@@ -76,6 +77,7 @@ def test_handle_project_information_requires_at_least_one_input(tmp_path: Path) 
         input_gpuh=None,
         input_dss=None,
         output=str(tmp_path / "output.csv"),
+        format="csv",
     )
 
     try:
@@ -84,3 +86,33 @@ def test_handle_project_information_requires_at_least_one_input(tmp_path: Path) 
         assert str(exc) == "Provide at least one input file."
     else:
         raise AssertionError("Expected SystemExit when no inputs are provided.")
+
+
+def test_handle_project_information_markdown_output(tmp_path: Path) -> None:
+    pi_path = tmp_path / "project-pi-map.txt"
+    output_path = tmp_path / "output.md"
+
+    _write_text(
+        pi_path,
+        "\n".join(
+            [
+                "pn25da Univ.Prof.Dr. Stefan Feuerriegel (ra52med)",
+                "pn25ju Univ.Prof. Frauke Kreuter (lu26cix)",
+            ]
+        ),
+    )
+
+    args = Namespace(
+        input_pi=str(pi_path),
+        input_gpuh=None,
+        input_dss=None,
+        output=str(output_path),
+        format="markdown",
+    )
+
+    assert plot_cli.handle_project_information(args) == str(output_path)
+
+    lines = output_path.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "| ProjectID | PI |"
+    assert lines[1] == "| --- | --- |"
+    assert lines[2] == "| pn25da | Univ.Prof.Dr. Stefan Feuerriegel (ra52med) |"

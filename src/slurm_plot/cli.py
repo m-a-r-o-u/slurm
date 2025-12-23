@@ -253,6 +253,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default="project-information.csv",
         help="Output path for the generated CSV table.",
     )
+    info_parser.add_argument(
+        "--format",
+        choices=["csv", "table", "markdown"],
+        default="csv",
+        help="Output format for the project information (csv, table, markdown).",
+    )
 
     return parser
 
@@ -311,8 +317,7 @@ def handle_project_information(args: argparse.Namespace) -> str:
         header.extend(["DSS Assigned", "DSS Used"])
 
     with open(args.output, "w", encoding="utf-8", newline="") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(header)
+        rows = []
         for project_id in project_ids:
             row = [project_id]
             if args.input_pi:
@@ -328,7 +333,33 @@ def handle_project_information(args: argparse.Namespace) -> str:
                     row.extend([record.assigned_gb, record.used_gb])
                 else:
                     row.extend(["N/A", "N/A"])
-            writer.writerow(row)
+            rows.append(row)
+
+        if args.format == "csv":
+            writer = csv.writer(handle)
+            writer.writerow(header)
+            writer.writerows(rows)
+        elif args.format == "markdown":
+            handle.write("| " + " | ".join(header) + " |\n")
+            handle.write("| " + " | ".join("---" for _ in header) + " |\n")
+            for row in rows:
+                handle.write("| " + " | ".join(row) + " |\n")
+        else:
+            widths = [len(column) for column in header]
+            for row in rows:
+                for index, value in enumerate(row):
+                    widths[index] = max(widths[index], len(value))
+            header_line = "  ".join(
+                column.ljust(widths[index]) for index, column in enumerate(header)
+            )
+            handle.write(header_line + "\n")
+            separator_line = "  ".join("-" * width for width in widths)
+            handle.write(separator_line + "\n")
+            for row in rows:
+                line = "  ".join(
+                    value.ljust(widths[index]) for index, value in enumerate(row)
+                )
+                handle.write(line + "\n")
 
     return args.output
 
