@@ -167,7 +167,7 @@ def plot_gpu_hours_donut_chart(
         text.set_fontweight("bold")
     ax.set_title(
         f"GPU hours per project{title_suffix}",
-        fontsize=16,
+        fontsize=18,
         pad=6,
         fontfamily="monospace",
         fontweight="bold",
