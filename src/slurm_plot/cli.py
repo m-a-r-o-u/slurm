@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from io import StringIO
 from typing import Iterable, Sequence
 
-from .plots import BarChartData, plot_gpu_hours_horizontal_bar
+from .plots import BarChartData, plot_gpu_hours_donut_chart, plot_gpu_hours_horizontal_bar
 
 
 @dataclass(frozen=True)
@@ -136,6 +136,33 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional title suffix to include in parentheses.",
     )
 
+    donut_parser = subparsers.add_parser(
+        "donut-chart-gpuhours",
+        help="Plot a donut chart of GPU hours per project.",
+    )
+    donut_parser.add_argument(
+        "--input",
+        type=str,
+        help="Path to a CSV file with year, account, and gpu_hours columns (defaults to stdin).",
+    )
+    donut_parser.add_argument(
+        "--output",
+        type=str,
+        default="gpu-hours-donut.png",
+        help="Output path for the chart image (defaults to gpu-hours-donut.png).",
+    )
+    donut_parser.add_argument(
+        "--norm",
+        type=_parse_bool,
+        default=False,
+        help="Normalize GPU hours by the total and plot percentages (true/false).",
+    )
+    donut_parser.add_argument(
+        "--title",
+        type=str,
+        help="Optional title suffix to include in parentheses.",
+    )
+
     return parser
 
 
@@ -156,12 +183,30 @@ def handle_horizontal_bar_chart(args: argparse.Namespace) -> str:
     return args.output
 
 
+def handle_donut_chart(args: argparse.Namespace) -> str:
+    csv_content = _read_csv_content(args.input)
+    records = _load_gpu_hours(csv_content)
+    aggregated = _aggregate_gpu_hours(records)
+    ordered = _sort_and_trim(aggregated, "desc", None)
+
+    plot_gpu_hours_donut_chart(
+        ordered,
+        normalized=args.norm,
+        title=args.title,
+        output_path=args.output,
+    )
+
+    return args.output
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
     if args.command == "horizontal-bar-chart-gpuhours":
         output = handle_horizontal_bar_chart(args)
+    elif args.command == "donut-chart-gpuhours":
+        output = handle_donut_chart(args)
     else:  # pragma: no cover - argparse enforces known commands
         parser.error("Unknown command")
         return

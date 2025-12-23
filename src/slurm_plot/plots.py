@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import cycle
 from typing import Iterable
 
 import matplotlib.pyplot as plt
@@ -27,10 +28,7 @@ def plot_gpu_hours_horizontal_bar(
     if not rows:
         raise ValueError("No data available to plot.")
 
-    labels = [row.label for row in rows]
-    values = [row.value for row in rows]
-
-    total = sum(values)
+    total = sum(row.value for row in rows)
     if normalized:
         if total == 0:
             raise ValueError("Total GPU hours are zero; cannot normalize.")
@@ -86,5 +84,96 @@ def plot_gpu_hours_horizontal_bar(
 
     fig.tight_layout(pad=0.4)
     fig.subplots_adjust(left=0.27, right=0.98, top=0.96, bottom=0.06)
+    fig.savefig(output_path, dpi=150, bbox_inches="tight", pad_inches=0.02)
+    plt.close(fig)
+
+
+def plot_gpu_hours_donut_chart(
+    data: Iterable[BarChartData],
+    *,
+    normalized: bool,
+    title: str | None,
+    output_path: str,
+) -> None:
+    rows = list(data)
+    if not rows:
+        raise ValueError("No data available to plot.")
+
+    total = sum(row.value for row in rows)
+    if total <= 0:
+        raise ValueError("Total GPU hours are zero; cannot plot donut chart.")
+
+    others_threshold = total * 0.02
+    major_rows: list[BarChartData] = []
+    others_total = 0.0
+    for row in rows:
+        if row.value < others_threshold:
+            others_total += row.value
+        else:
+            major_rows.append(row)
+
+    major_rows.sort(key=lambda item: item.value)
+
+    chart_rows: list[BarChartData] = []
+    if others_total > 0:
+        chart_rows.append(BarChartData(label="Others", value=others_total))
+    chart_rows.extend(major_rows)
+
+    chart_labels = [row.label for row in chart_rows]
+    chart_values = [row.value for row in chart_rows]
+    if normalized:
+        chart_values = [(value / total) * 100 for value in chart_values]
+
+    title_suffix = f" ({title})" if title else ""
+
+    fig, ax = plt.subplots(figsize=(10.5, 10.5))
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+
+    colors = [
+        "#d3d3d3" if label == "Others" else None for label in chart_labels
+    ]
+    palette = plt.get_cmap("tab20")
+    color_iter = cycle(palette.colors)
+    resolved_colors = []
+    for label, color in zip(chart_labels, colors):
+        if color is not None:
+            resolved_colors.append(color)
+        else:
+            resolved_colors.append(next(color_iter))
+
+    def _format_label(pct: float) -> str:
+        if normalized:
+            return f"{pct:.1f}%"
+        value = (pct / 100) * total
+        value_thousands = round(value / 1000)
+        return f"{value_thousands:.0f}k"
+
+    wedges, texts, autotexts = ax.pie(
+        chart_values,
+        labels=chart_labels,
+        startangle=90,
+        counterclock=False,
+        colors=resolved_colors,
+        autopct=_format_label,
+        pctdistance=0.8,
+        labeldistance=1.08,
+        wedgeprops={"width": 0.35, "edgecolor": "white"},
+    )
+
+    for text in texts + autotexts:
+        text.set_fontfamily("monospace")
+        text.set_fontsize(12)
+        text.set_fontweight("bold")
+    ax.set_title(
+        f"GPU hours per project{title_suffix}",
+        fontsize=16,
+        pad=6,
+        fontfamily="monospace",
+        fontweight="bold",
+    )
+    ax.set_aspect("equal")
+
+    fig.tight_layout(pad=0.4)
     fig.savefig(output_path, dpi=150, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
