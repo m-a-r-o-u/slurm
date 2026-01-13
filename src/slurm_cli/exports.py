@@ -47,6 +47,7 @@ def export_sacct(
     date_range: DateRange,
     output_dir: Path,
     debug: bool = False,
+    missing: bool = False,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> list[Path]:
     """Export sacct data for each day in the date range to CSV files.
@@ -55,6 +56,7 @@ def export_sacct(
         date_range: Inclusive range of dates to export.
         output_dir: Directory to write CSV files.
         debug: When True, print commands executed.
+        missing: When True, skip days that already have exported CSV files.
         runner: Command execution function (defaults to subprocess.run).
     """
 
@@ -62,12 +64,14 @@ def export_sacct(
     generated: list[Path] = []
 
     for day in _iter_days(date_range):
+        output_file = output_dir / f"{day.isoformat()}.csv"
+        if missing and output_file.exists():
+            continue
+
         command = _sacct_command(day, day + timedelta(days=1))
         if debug:
             print(f"[debug] {command}")
         result = runner(command, shell=True, check=True, capture_output=True, text=True)
-
-        output_file = output_dir / f"{day.isoformat()}.csv"
         with output_file.open("w", newline="") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(SACCT_FIELDS)
