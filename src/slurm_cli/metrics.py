@@ -304,16 +304,22 @@ def _normalize_ts(value: object) -> Optional[datetime]:
     return None
 
 
-def _derive_time_bucket(end_ts: Optional[datetime], granularity: str) -> Optional[str]:
+def _derive_time_bucket(
+    end_ts: Optional[datetime], granularity: str, *, anchor: Optional[datetime] = None
+) -> Optional[str]:
     if end_ts is None:
         return None
 
     month_match = re.match(r"^(?P<count>[1-9]\d*)months$", granularity)
     if month_match:
         window_size = int(month_match.group("count"))
+        anchor_ts = anchor or end_ts
+        anchor_index = anchor_ts.year * 12 + (anchor_ts.month - 1)
         month_index = end_ts.year * 12 + (end_ts.month - 1)
-        window_start_index = (month_index // window_size) * window_size
-        window_end_index = window_start_index + window_size - 1
+        offset = anchor_index - month_index
+        window_offset = (offset // window_size) * window_size
+        window_end_index = anchor_index - window_offset
+        window_start_index = window_end_index - window_size + 1
         start_year, start_month = divmod(window_start_index, 12)
         end_year, end_month = divmod(window_end_index, 12)
         return (
@@ -460,9 +466,14 @@ def query_metrics(
             continue
 
         key_parts_options: list[list[object]] = []
+        anchor_ts = None
+        if time_prefix and re.match(r"^[1-9]\d*months$", time_prefix):
+            anchor_ts = datetime.now(timezone.utc)
         for group in validated_by:
             if group == time_prefix:
-                key_parts_options.append([_derive_time_bucket(end_ts, group)])
+                key_parts_options.append(
+                    [_derive_time_bucket(end_ts, group, anchor=anchor_ts)]
+                )
                 continue
 
             record_value = record.get(grouping_map.get(group, group))
