@@ -437,18 +437,32 @@ def query_metrics(
         except (TypeError, ValueError):
             continue
 
-        key_parts: list[object] = []
+        key_parts_options: list[list[object]] = []
         for group in validated_by:
             if group == time_prefix:
-                key_parts.append(_derive_time_bucket(end_ts, group))
-            else:
-                key_parts.append(record.get(grouping_map.get(group, group)))
+                key_parts_options.append([_derive_time_bucket(end_ts, group)])
+                continue
 
-        key = tuple(key_parts)
-        if key not in aggregates:
-            aggregates[key] = {"sum": 0.0, "count": 0}
-        aggregates[key]["sum"] += numeric_value
-        aggregates[key]["count"] += 1
+            record_value = record.get(grouping_map.get(group, group))
+            if group == "account" and record_value:
+                account_values = [
+                    segment.strip()
+                    for segment in str(record_value).split(",")
+                    if segment.strip()
+                ]
+                key_parts_options.append(account_values or [record_value])
+            else:
+                key_parts_options.append([record_value])
+
+        keys: list[tuple[object, ...]] = [tuple()]
+        for options in key_parts_options:
+            keys = [existing + (option,) for existing in keys for option in options]
+
+        for key in keys:
+            if key not in aggregates:
+                aggregates[key] = {"sum": 0.0, "count": 0}
+            aggregates[key]["sum"] += numeric_value
+            aggregates[key]["count"] += 1
 
     rows: list[dict] = []
     for key, values in aggregates.items():
