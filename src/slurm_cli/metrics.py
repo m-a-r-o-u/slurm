@@ -5,6 +5,7 @@ import csv
 import json
 import fnmatch
 import io
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -303,9 +304,28 @@ def _normalize_ts(value: object) -> Optional[datetime]:
     return None
 
 
-def _derive_time_bucket(end_ts: Optional[datetime], granularity: str) -> Optional[str]:
+def _derive_time_bucket(
+    end_ts: Optional[datetime], granularity: str, *, anchor: Optional[datetime] = None
+) -> Optional[str]:
     if end_ts is None:
         return None
+
+    month_match = re.match(r"^(?P<count>[1-9]\d*)months$", granularity)
+    if month_match:
+        window_size = int(month_match.group("count"))
+        anchor_ts = anchor or end_ts
+        anchor_index = anchor_ts.year * 12 + (anchor_ts.month - 1)
+        month_index = end_ts.year * 12 + (end_ts.month - 1)
+        offset = anchor_index - month_index
+        window_offset = (offset // window_size) * window_size
+        window_end_index = anchor_index - window_offset
+        window_start_index = window_end_index - window_size + 1
+        start_year, start_month = divmod(window_start_index, 12)
+        end_year, end_month = divmod(window_end_index, 12)
+        return (
+            f"{start_year:04d}-{start_month + 1:02d}"
+            f"..{end_year:04d}-{end_month + 1:02d}"
+        )
 
     if granularity == "day":
         return end_ts.date().isoformat()
@@ -324,10 +344,18 @@ def _validate_grouping(by: list[str]) -> tuple[Optional[str], list[str]]:
     time_keys = {"day", "week", "month", "year"}
 
     for entry in by:
+        if entry in allowed:
+            continue
+        if re.match(r"^[1-9]\d*months$", entry):
+            continue
         if entry not in allowed:
             raise ValueError(f"Unsupported grouping column: {entry}")
 
-    time_in_by = [entry for entry in by if entry in time_keys]
+    time_in_by = [
+        entry
+        for entry in by
+        if entry in time_keys or re.match(r"^[1-9]\d*months$", entry)
+    ]
     if len(time_in_by) > 1:
         raise ValueError("Only one time-based grouping is allowed and it must be first")
     time_prefix = time_in_by[0] if time_in_by else None
@@ -437,18 +465,37 @@ def query_metrics(
         except (TypeError, ValueError):
             continue
 
-        key_parts: list[object] = []
+        key_parts_options: list[list[object]] = []
+        anchor_ts = None
+        if time_prefix and re.match(r"^[1-9]\d*months$", time_prefix):
+            anchor_ts = datetime.now(timezone.utc)
         for group in validated_by:
             if group == time_prefix:
-                key_parts.append(_derive_time_bucket(end_ts, group))
-            else:
-                key_parts.append(record.get(grouping_map.get(group, group)))
+                key_parts_options.append(
+                    [_derive_time_bucket(end_ts, group, anchor=anchor_ts)]
+                )
+                continue
 
-        key = tuple(key_parts)
-        if key not in aggregates:
-            aggregates[key] = {"sum": 0.0, "count": 0}
-        aggregates[key]["sum"] += numeric_value
-        aggregates[key]["count"] += 1
+            record_value = record.get(grouping_map.get(group, group))
+            if group == "account" and record_value:
+                account_values = [
+                    segment.strip()
+                    for segment in str(record_value).split(",")
+                    if segment.strip()
+                ]
+                key_parts_options.append(account_values or [record_value])
+            else:
+                key_parts_options.append([record_value])
+
+        keys: list[tuple[object, ...]] = [tuple()]
+        for options in key_parts_options:
+            keys = [existing + (option,) for existing in keys for option in options]
+
+        for key in keys:
+            if key not in aggregates:
+                aggregates[key] = {"sum": 0.0, "count": 0}
+            aggregates[key]["sum"] += numeric_value
+            aggregates[key]["count"] += 1
 
     rows: list[dict] = []
     for key, values in aggregates.items():
@@ -475,20 +522,39 @@ def format_query_result(result: MetricsQueryResult, *, output_format: str = "jso
         import yaml
 
         return yaml.safe_dump(result.as_dict(), sort_keys=False)
+
+    def format_metric_value(value: object) -> object:
+        if result.metric == "gpu_hours" and isinstance(value, (int, float)):
+            return f"{value:.1f}"
+        return value
+
     if output_format == "csv":
         columns = result.by + [result.metric]
         buffer = io.StringIO()
         writer = csv.DictWriter(buffer, fieldnames=columns)
         writer.writeheader()
         for row in result.rows:
-            writer.writerow({column: row.get(column, "") for column in columns})
+            formatted = {}
+            for column in columns:
+                value = row.get(column, "")
+                if column == result.metric:
+                    value = format_metric_value(value)
+                formatted[column] = value
+            writer.writerow(formatted)
         return buffer.getvalue().strip()
     if output_format == "table":
         columns = result.by + [result.metric]
         widths: dict[str, int] = {}
         for column in columns:
             candidates = [len(column)]
-            candidates.extend(len(str(row.get(column, ""))) for row in result.rows)
+            candidates.extend(
+                len(
+                    str(
+                        format_metric_value(row.get(column, "")) if column == result.metric else row.get(column, "")
+                    )
+                )
+                for row in result.rows
+            )
             widths[column] = max(candidates)
 
         header = " | ".join(column.ljust(widths[column]) for column in columns)
@@ -496,7 +562,12 @@ def format_query_result(result: MetricsQueryResult, *, output_format: str = "jso
 
         lines = [header, separator]
         for row in result.rows:
-            line = " | ".join(str(row.get(column, "")).ljust(widths[column]) for column in columns)
+            line = " | ".join(
+                str(
+                    format_metric_value(row.get(column, "")) if column == result.metric else row.get(column, "")
+                ).ljust(widths[column])
+                for column in columns
+            )
             lines.append(line)
 
         return "\n".join(lines)

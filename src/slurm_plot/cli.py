@@ -66,7 +66,9 @@ def _load_gpu_hours(csv_content: str) -> list[GpuHoursRecord]:
             gpu_hours = float(row.get("gpu_hours", 0) or 0)
         except ValueError as exc:
             raise SystemExit(f"Invalid gpu_hours value: {row.get('gpu_hours')}") from exc
-        records.append(GpuHoursRecord(account=account, gpu_hours=gpu_hours))
+        accounts = [segment.strip() for segment in account.split(",") if segment.strip()]
+        for account_name in accounts:
+            records.append(GpuHoursRecord(account=account_name, gpu_hours=gpu_hours))
 
     if not records:
         raise SystemExit("No valid rows found in the CSV data.")
