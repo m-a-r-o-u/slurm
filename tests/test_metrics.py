@@ -25,13 +25,17 @@ def test_build_metrics_writes_dataset(tmp_path: Path):
 
     result = build_metrics(input_dir=csv_path, output_path=output_path)
 
-    assert result.output_path == output_path
+    if result.storage_format == "json":
+        expected_output_path = output_path.with_suffix(".json")
+    else:
+        expected_output_path = output_path
+    assert result.output_path == expected_output_path
     assert result.source_files == [source_file]
     assert result.rows_written == 2
-    assert output_path.exists()
+    assert expected_output_path.exists()
     assert result.storage_format in {"parquet", "json"}
 
-    raw_payload = output_path.read_text()
+    raw_payload = expected_output_path.read_text()
     records = json.loads(raw_payload)
     rows = {row["job_id"]: row for row in records}
 
@@ -79,8 +83,12 @@ def test_simple_cli_metrics_build_runs(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(simple_cli, "build_metrics", fake_build_metrics)
 
     payload = json.loads(simple_cli.handle_metrics_build(args))
+    if payload["storage_format"] == "json":
+        expected_path = str(output_path.with_suffix(".json"))
+    else:
+        expected_path = str(output_path)
 
-    assert payload["output_path"] == str(output_path)
+    assert payload["output_path"] == expected_path
     assert payload["source_files"] == [str(csv_file)]
 
 

@@ -231,23 +231,33 @@ def _derive_jobs(records: list[dict]) -> list[dict]:
     return jobs
 
 
-def _write_jobs_dataset(records: list[dict], output_path: Path) -> str:
+def _write_jobs_dataset(records: list[dict], output_path: Path) -> tuple[str, Path]:
     try:
         import pyarrow as pa
         import pyarrow.parquet as pq
 
         table = pa.Table.from_pylist(records)
         pq.write_table(table, output_path)
-        return "parquet"
+        return "parquet", output_path
     except Exception:
         # Fallback to JSON when pyarrow is unavailable
-        output_path.write_text(json.dumps(records, default=str, indent=2))
-        return "json"
+        fallback_path = output_path
+        if output_path.suffix == ".parquet":
+            fallback_path = output_path.with_suffix(".json")
+        fallback_path.write_text(json.dumps(records, default=str, indent=2))
+        return "json", fallback_path
 
 
 def _load_jobs_dataset(path: Path) -> list[dict]:
     if not path.exists():
-        raise FileNotFoundError(f"Dataset not found at {path}")
+        if path.suffix == ".parquet":
+            fallback_path = path.with_suffix(".json")
+            if fallback_path.exists():
+                path = fallback_path
+            else:
+                raise FileNotFoundError(f"Dataset not found at {path}")
+        else:
+            raise FileNotFoundError(f"Dataset not found at {path}")
 
     try:
         import pyarrow.parquet as pq
@@ -482,11 +492,11 @@ def build_metrics(*, input_dir: Path, output_path: Path) -> MetricsBuildResult:
     jobs = _derive_jobs(raw_records)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    storage_format = _write_jobs_dataset(jobs, output_path)
+    storage_format, resolved_output_path = _write_jobs_dataset(jobs, output_path)
 
     return MetricsBuildResult(
         source_files=csv_files,
-        output_path=output_path,
+        output_path=resolved_output_path,
         rows_written=len(jobs),
         storage_format=storage_format,
     )
@@ -535,10 +545,10 @@ def apply_accounts_workaround(
         remapped_users.add(user_name)
         rows_updated += 1
 
-    storage_format = _write_jobs_dataset(records, target_path)
+    storage_format, resolved_output_path = _write_jobs_dataset(records, target_path)
     return AccountsWorkaroundResult(
         dataset_path=dataset_path,
-        output_path=target_path,
+        output_path=resolved_output_path,
         rows_scanned=len(records),
         rows_updated=rows_updated,
         users_remapped=sorted(remapped_users),
