@@ -61,7 +61,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "metrics",
         help="Maintain derived metrics datasets from raw exports.",
         description=(
-            "Convert sacct CSV exports into analytics-ready Parquet datasets. Use the build "
+            "Convert sacct CSV exports into analytics-ready Parquet datasets (or JSON when "
+            "Parquet is unavailable). Use the build "
             "subcommand to refresh jobs_data from the latest raw files."
         ),
     )
@@ -69,7 +70,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     metrics_build_parser = metrics_subparsers.add_parser(
         "build",
-        help="Transform sacct CSV files into the jobs_data Parquet dataset.",
+        help="Transform sacct CSV files into the jobs_data dataset.",
     )
     metrics_build_parser.add_argument(
         "--input-dir",
@@ -81,7 +82,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-path",
         type=Path,
         default=Path("metrics") / "jobs_data.parquet",
-        help="Destination Parquet file for the jobs_data dataset (defaults to ./metrics/jobs_data.parquet).",
+        help=(
+            "Destination path for the jobs_data dataset (defaults to "
+            "./metrics/jobs_data.parquet). Falls back to .json if Parquet is unavailable."
+        ),
     )
 
     metrics_query_parser = metrics_subparsers.add_parser(
@@ -96,7 +100,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dataset-path",
         type=Path,
         default=Path("metrics") / "jobs_data.parquet",
-        help="Path to the jobs_data dataset (defaults to ./metrics/jobs_data.parquet).",
+        help=(
+            "Path to the jobs_data dataset (defaults to ./metrics/jobs_data.parquet). If the "
+            "Parquet file is missing, a .json file with the same stem will be used."
+        ),
     )
     metrics_query_parser.add_argument(
         "--by",
@@ -143,7 +150,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dataset-path",
         type=Path,
         default=Path("metrics") / "jobs_data.parquet",
-        help="Path to the jobs_data dataset (defaults to ./metrics/jobs_data.parquet).",
+        help=(
+            "Path to the jobs_data dataset (defaults to ./metrics/jobs_data.parquet). If the "
+            "Parquet file is missing, a .json file with the same stem will be used."
+        ),
     )
     metrics_accounts_parser.add_argument(
         "--output-path",
