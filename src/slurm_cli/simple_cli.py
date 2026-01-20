@@ -149,10 +149,10 @@ def _build_parser() -> argparse.ArgumentParser:
     metrics_accounts_parser.add_argument(
         "--dataset-path",
         type=Path,
-        default=Path("metrics") / "jobs_data.parquet",
+        default=Path("metrics") / "jobs_data.json",
         help=(
-            "Path to the jobs_data dataset (defaults to ./metrics/jobs_data.parquet). If the "
-            "Parquet file is missing, a .json file with the same stem will be used."
+            "Path to the jobs_data dataset (defaults to ./metrics/jobs_data.json). If the "
+            "JSON file is missing, a .parquet file with the same stem will be used."
         ),
     )
     metrics_accounts_parser.add_argument(
