@@ -257,7 +257,11 @@ def _load_jobs_dataset(path: Path) -> list[dict]:
             else:
                 raise FileNotFoundError(f"Dataset not found at {path}")
         else:
-            raise FileNotFoundError(f"Dataset not found at {path}")
+            fallback_path = path.with_suffix(".parquet")
+            if fallback_path.exists():
+                path = fallback_path
+            else:
+                raise FileNotFoundError(f"Dataset not found at {path}")
 
     try:
         import pyarrow.parquet as pq
@@ -267,6 +271,20 @@ def _load_jobs_dataset(path: Path) -> list[dict]:
     except Exception:
         payload = path.read_text(encoding="utf-8")
         return json.loads(payload)
+
+
+def _resolve_jobs_dataset_path(path: Path) -> Path:
+    if path.exists():
+        return path
+    if path.suffix == ".parquet":
+        fallback_path = path.with_suffix(".json")
+        if fallback_path.exists():
+            return fallback_path
+    else:
+        fallback_path = path.with_suffix(".parquet")
+        if fallback_path.exists():
+            return fallback_path
+    return path
 
 
 def _normalize_ts(value: object) -> Optional[datetime]:
@@ -505,15 +523,24 @@ def build_metrics(*, input_dir: Path, output_path: Path) -> MetricsBuildResult:
 def _load_user_project_map(path: Path) -> dict[str, str]:
     mapping: dict[str, str] = {}
     with path.open(encoding="utf-8") as handle:
-        for raw_line in handle:
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
+        reader = csv.reader(handle)
+        for row in reader:
+            if not row:
                 continue
-            parts = line.split()
-            if len(parts) < 2:
+            if row[0].startswith("#"):
                 continue
-            user, account = parts[0], parts[1]
-            mapping[user] = account
+            if len(row) < 2:
+                continue
+            user = row[0].strip()
+            projects = row[1].strip()
+            if user.lower() == "user_id" and projects.lower() == "projects":
+                continue
+            if not user or not projects:
+                continue
+            project_list = [project.strip() for project in projects.split("+") if project.strip()]
+            if not project_list:
+                continue
+            mapping[user] = ",".join(project_list)
     return mapping
 
 
@@ -525,9 +552,10 @@ def apply_accounts_workaround(
 ) -> AccountsWorkaroundResult:
     """Temporary workaround to remap default accounts using a user-project mapping."""
 
-    records = _load_jobs_dataset(dataset_path)
+    resolved_dataset_path = _resolve_jobs_dataset_path(dataset_path)
+    records = _load_jobs_dataset(resolved_dataset_path)
     mapping = _load_user_project_map(mapping_path)
-    target_path = output_path or dataset_path
+    target_path = output_path or resolved_dataset_path
     remapped_users: set[str] = set()
     rows_updated = 0
 
@@ -547,7 +575,7 @@ def apply_accounts_workaround(
 
     storage_format, resolved_output_path = _write_jobs_dataset(records, target_path)
     return AccountsWorkaroundResult(
-        dataset_path=dataset_path,
+        dataset_path=resolved_dataset_path,
         output_path=resolved_output_path,
         rows_scanned=len(records),
         rows_updated=rows_updated,
