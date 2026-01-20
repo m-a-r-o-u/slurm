@@ -5,6 +5,7 @@ import csv
 import json
 import fnmatch
 import io
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -307,6 +308,19 @@ def _derive_time_bucket(end_ts: Optional[datetime], granularity: str) -> Optiona
     if end_ts is None:
         return None
 
+    month_match = re.match(r"^(?P<count>[1-9]\d*)months$", granularity)
+    if month_match:
+        window_size = int(month_match.group("count"))
+        month_index = end_ts.year * 12 + (end_ts.month - 1)
+        window_start_index = (month_index // window_size) * window_size
+        window_end_index = window_start_index + window_size - 1
+        start_year, start_month = divmod(window_start_index, 12)
+        end_year, end_month = divmod(window_end_index, 12)
+        return (
+            f"{start_year:04d}-{start_month + 1:02d}"
+            f"..{end_year:04d}-{end_month + 1:02d}"
+        )
+
     if granularity == "day":
         return end_ts.date().isoformat()
     if granularity == "week":
@@ -324,10 +338,18 @@ def _validate_grouping(by: list[str]) -> tuple[Optional[str], list[str]]:
     time_keys = {"day", "week", "month", "year"}
 
     for entry in by:
+        if entry in allowed:
+            continue
+        if re.match(r"^[1-9]\d*months$", entry):
+            continue
         if entry not in allowed:
             raise ValueError(f"Unsupported grouping column: {entry}")
 
-    time_in_by = [entry for entry in by if entry in time_keys]
+    time_in_by = [
+        entry
+        for entry in by
+        if entry in time_keys or re.match(r"^[1-9]\d*months$", entry)
+    ]
     if len(time_in_by) > 1:
         raise ValueError("Only one time-based grouping is allowed and it must be first")
     time_prefix = time_in_by[0] if time_in_by else None
