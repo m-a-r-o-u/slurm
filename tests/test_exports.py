@@ -39,3 +39,23 @@ def test_sacct_export_writes_daily_files(tmp_path):
 
     second_file = generated[1]
     assert second_file.read_text().strip().splitlines() == [",".join(SACCT_FIELDS)]
+
+
+def test_sacct_export_missing_skips_existing_files(tmp_path):
+    date_range = DateRange(start=date(2025, 12, 1), end=date(2025, 12, 2))
+    existing_file = tmp_path / "2025-12-01.csv"
+    existing_file.write_text("already,there\n")
+    outputs = ["2|bob|acct|gpu|2025-12-02T00:30:00|2025-12-02T01:00:00|2025-12-02T02:00:00|F|0:0|3600|gres/gpu=1"]
+    commands: list[str] = []
+    runner = _runner_factory(outputs, commands)
+
+    generated = export_sacct(
+        date_range=date_range,
+        output_dir=tmp_path,
+        runner=runner,
+        missing=True,
+    )
+
+    assert commands == [_sacct_command(date(2025, 12, 2), date(2025, 12, 3))]
+    assert generated == [tmp_path / "2025-12-02.csv"]
+    assert existing_file.read_text() == "already,there\n"

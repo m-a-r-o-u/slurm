@@ -29,6 +29,21 @@ class DateRangeTests(unittest.TestCase):
         self.assertEqual(rng.end, date(2024, 4, 9))
         self.assertEqual(rng.days(), 9)
 
+    def test_resolve_last_days(self):
+        rng = resolve_date_range("lastD:5", None, reference_date=date(2024, 6, 15))
+        self.assertEqual(rng.start, date(2024, 6, 10))
+        self.assertEqual(rng.end, date(2024, 6, 14))
+        self.assertEqual(rng.days(), 5)
+
+    def test_resolve_last_months(self):
+        rng = resolve_date_range("lastM:2", None, reference_date=date(2024, 6, 15))
+        self.assertEqual(rng.start, date(2024, 5, 1))
+        self.assertEqual(rng.end, date(2024, 6, 14))
+
+    def test_invalid_relative_selector(self):
+        with self.assertRaises(DateRangeError):
+            resolve_date_range("lastD:0", None, reference_date=date(2024, 6, 15))
+
     def test_invalid_start_raises_error(self):
         with self.assertRaises(DateRangeError):
             resolve_date_range("2024-13", None)

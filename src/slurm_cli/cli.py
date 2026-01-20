@@ -28,7 +28,8 @@ def _add_date_arguments(parser: argparse.ArgumentParser, start_required: bool = 
         "-d",
         help=(
             "Single date selector accepting YYYY, YYYY-MM, or YYYY-MM-DD. The precision"
-            " determines the range: year → full year, month → full month, day → that day."
+            " determines the range: year → full year, month → full month, day → that day. "
+            "Relative selectors include lastM:N for the last N months and lastD:N for the last N days."
         ),
     )
     parser.add_argument(
@@ -138,6 +139,13 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the sacct commands executed for each day before running them.",
     )
+    sacct_parser.add_argument(
+        "--missing",
+        action="store_true",
+        help=(
+            "Only export days that do not already have CSV files in the output directory."
+        ),
+    )
 
     # Applications
     app_parser = subparsers.add_parser(
@@ -191,7 +199,12 @@ def handle_utils_gpu_hours(args: argparse.Namespace) -> str:
 def handle_utils_export(args: argparse.Namespace) -> str:
     if args.export_command == "sacct":
         date_range = _resolve_date_range_from_args(args)
-        generated = export_sacct(date_range=date_range, output_dir=args.output_dir, debug=args.debug)
+        generated = export_sacct(
+            date_range=date_range,
+            output_dir=args.output_dir,
+            debug=args.debug,
+            missing=args.missing,
+        )
         return json.dumps(
             {
                 "output_dir": str(args.output_dir),

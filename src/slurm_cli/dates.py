@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from calendar import monthrange
+import re
 from typing import Literal
 
 
@@ -39,6 +40,32 @@ def _parse_start(value: str) -> tuple[date, Literal["year", "month", "day"]]:
         return date.fromisoformat(value), "day"
     except ValueError as exc:  # noqa: B904
         raise DateRangeError(f"Invalid start date '{value}'. Use YYYY, YYYY-MM, or YYYY-MM-DD.") from exc
+
+
+def _subtract_months(year: int, month: int, months: int) -> tuple[int, int]:
+    total_months = year * 12 + (month - 1) - months
+    new_year = total_months // 12
+    new_month = total_months % 12 + 1
+    return new_year, new_month
+
+
+def _parse_relative_range(value: str, available_end: date) -> DateRange | None:
+    match = re.match(r"^last([MD]):(\d+)$", value, re.IGNORECASE)
+    if not match:
+        return None
+
+    unit, count_value = match.groups()
+    count = int(count_value)
+    if count <= 0:
+        raise DateRangeError(f"Relative date '{value}' must use a positive count.")
+
+    if unit.upper() == "D":
+        start = available_end - timedelta(days=count - 1)
+        return DateRange(start=start, end=available_end)
+
+    start_year, start_month = _subtract_months(available_end.year, available_end.month, count - 1)
+    start = date(start_year, start_month, 1)
+    return DateRange(start=start, end=available_end)
 
 
 def _last_day_of_month(year: int, month: int) -> date:
@@ -96,7 +123,12 @@ def resolve_date_range(
     requests using only ``--date`` respect currently available data.
     """
 
-    start_date, precision = _parse_start(start_value)
     available_end = (reference_date or date.today()) - timedelta(days=1)
+    if end_value is None:
+        relative_range = _parse_relative_range(start_value, available_end)
+        if relative_range is not None:
+            return relative_range
+
+    start_date, precision = _parse_start(start_value)
     end_date = _derive_end(start_date, precision, end_value, available_end)
     return DateRange(start=start_date, end=end_date)

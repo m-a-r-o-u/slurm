@@ -49,6 +49,13 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the sacct commands executed for each day before running them.",
     )
+    sacct_parser.add_argument(
+        "--missing",
+        action="store_true",
+        help=(
+            "Only export days that do not already have CSV files in the output directory."
+        ),
+    )
 
     metrics_parser = subparsers.add_parser(
         "metrics",
@@ -151,7 +158,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def handle_export_sacct(args: argparse.Namespace) -> str:
     date_range = _resolve_date_range_from_args(args)
-    generated = export_sacct(date_range=date_range, output_dir=args.output_dir, debug=args.debug)
+    generated = export_sacct(
+        date_range=date_range,
+        output_dir=args.output_dir,
+        debug=args.debug,
+        missing=args.missing,
+    )
     return json.dumps(
         {
             "output_dir": str(args.output_dir),
