@@ -489,20 +489,39 @@ def format_query_result(result: MetricsQueryResult, *, output_format: str = "jso
         import yaml
 
         return yaml.safe_dump(result.as_dict(), sort_keys=False)
+
+    def format_metric_value(value: object) -> object:
+        if result.metric == "gpu_hours" and isinstance(value, (int, float)):
+            return f"{value:.1f}"
+        return value
+
     if output_format == "csv":
         columns = result.by + [result.metric]
         buffer = io.StringIO()
         writer = csv.DictWriter(buffer, fieldnames=columns)
         writer.writeheader()
         for row in result.rows:
-            writer.writerow({column: row.get(column, "") for column in columns})
+            formatted = {}
+            for column in columns:
+                value = row.get(column, "")
+                if column == result.metric:
+                    value = format_metric_value(value)
+                formatted[column] = value
+            writer.writerow(formatted)
         return buffer.getvalue().strip()
     if output_format == "table":
         columns = result.by + [result.metric]
         widths: dict[str, int] = {}
         for column in columns:
             candidates = [len(column)]
-            candidates.extend(len(str(row.get(column, ""))) for row in result.rows)
+            candidates.extend(
+                len(
+                    str(
+                        format_metric_value(row.get(column, "")) if column == result.metric else row.get(column, "")
+                    )
+                )
+                for row in result.rows
+            )
             widths[column] = max(candidates)
 
         header = " | ".join(column.ljust(widths[column]) for column in columns)
@@ -510,7 +529,12 @@ def format_query_result(result: MetricsQueryResult, *, output_format: str = "jso
 
         lines = [header, separator]
         for row in result.rows:
-            line = " | ".join(str(row.get(column, "")).ljust(widths[column]) for column in columns)
+            line = " | ".join(
+                str(
+                    format_metric_value(row.get(column, "")) if column == result.metric else row.get(column, "")
+                ).ljust(widths[column])
+                for column in columns
+            )
             lines.append(line)
 
         return "\n".join(lines)
