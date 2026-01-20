@@ -505,15 +505,24 @@ def build_metrics(*, input_dir: Path, output_path: Path) -> MetricsBuildResult:
 def _load_user_project_map(path: Path) -> dict[str, str]:
     mapping: dict[str, str] = {}
     with path.open(encoding="utf-8") as handle:
-        for raw_line in handle:
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
+        reader = csv.reader(handle)
+        for row in reader:
+            if not row:
                 continue
-            parts = line.split()
-            if len(parts) < 2:
+            if row[0].startswith("#"):
                 continue
-            user, account = parts[0], parts[1]
-            mapping[user] = account
+            if len(row) < 2:
+                continue
+            user = row[0].strip()
+            projects = row[1].strip()
+            if user.lower() == "user_id" and projects.lower() == "projects":
+                continue
+            if not user or not projects:
+                continue
+            project_list = [project.strip() for project in projects.split("+") if project.strip()]
+            if not project_list:
+                continue
+            mapping[user] = ",".join(project_list)
     return mapping
 
 
