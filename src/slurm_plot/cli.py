@@ -9,6 +9,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from io import StringIO
 import math
+from pathlib import Path
 from typing import Iterable, Sequence
 
 from .plots import BarChartData, plot_gpu_hours_donut_chart, plot_gpu_hours_horizontal_bar
@@ -289,15 +290,18 @@ def handle_donut_chart(args: argparse.Namespace) -> str:
     records = _load_gpu_hours(csv_content)
     aggregated = _aggregate_gpu_hours(records)
     ordered = _sort_and_trim(aggregated, "desc", None)
+    output_path = Path(args.output)
+    if output_path.parent != Path("."):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
     plot_gpu_hours_donut_chart(
         ordered,
         normalized=args.norm,
         title=args.title,
-        output_path=args.output,
+        output_path=str(output_path),
     )
 
-    return args.output
+    return str(output_path)
 
 
 def handle_project_information(args: argparse.Namespace) -> str:
