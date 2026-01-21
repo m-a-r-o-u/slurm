@@ -149,12 +149,14 @@ def _select_latest_window(rows: list[dict[str, str]], window_field: str) -> str 
 
     return max(window_values, key=_window_key)
 
-def _load_gpu_hours_by_project(input_path: str) -> dict[str, float]:
+def _load_gpu_hours_by_project(input_path: str, *, ignore_default: bool) -> dict[str, float]:
     with open(input_path, "r", encoding="utf-8") as handle:
         csv_content = handle.read()
     records = _load_gpu_hours(csv_content)
     totals: dict[str, float] = defaultdict(float)
     for record in records:
+        if ignore_default and record.account == "default":
+            continue
         totals[record.account] += record.gpu_hours
     return totals
 
@@ -338,6 +340,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to a CSV file with year, account, and gpu_hours columns.",
     )
     info_parser.add_argument(
+        "--ignore-default",
+        type=_parse_bool,
+        default=True,
+        help="Ignore the default account when summarizing GPU hours (true/false).",
+    )
+    info_parser.add_argument(
         "--input-dss",
         type=str,
         help="Path to a CSV file with DSS storage columns.",
@@ -398,9 +406,12 @@ def handle_donut_chart(args: argparse.Namespace) -> str:
 
 def handle_project_information(args: argparse.Namespace) -> str:
     pi_mapping = _load_project_pi(args.input_pi) if args.input_pi else {}
-    gpu_hours_mapping = (
-        _load_gpu_hours_by_project(args.input_gpuh) if args.input_gpuh else {}
-    )
+    gpu_hours_mapping = {}
+    if args.input_gpuh:
+        gpu_hours_mapping = _load_gpu_hours_by_project(
+            args.input_gpuh,
+            ignore_default=args.ignore_default,
+        )
     dss_mapping = _load_dss_usage(args.input_dss) if args.input_dss else {}
 
     if not (pi_mapping or gpu_hours_mapping or dss_mapping):
