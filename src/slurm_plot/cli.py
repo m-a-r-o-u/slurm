@@ -13,7 +13,7 @@ import math
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from .plots import BarChartData, plot_gpu_hours_donut_chart, plot_gpu_hours_horizontal_bar
+from .output import BarChartData, plot_gpu_hours_donut_chart, plot_gpu_hours_horizontal_bar
 
 
 @dataclass(frozen=True)
