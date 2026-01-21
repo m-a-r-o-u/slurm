@@ -28,6 +28,8 @@ def plot_gpu_hours_horizontal_bar(
     if not rows:
         raise ValueError("No data available to plot.")
 
+    labels = [row.label for row in rows]
+    values = [row.value for row in rows]
     total = sum(row.value for row in rows)
     if normalized:
         if total == 0:
