@@ -136,9 +136,15 @@ def _load_dss_usage(input_path: str) -> dict[str, DssUsageRecord]:
     return records
 
 
-def _aggregate_gpu_hours(records: Iterable[GpuHoursRecord]) -> list[BarChartData]:
+def _aggregate_gpu_hours(
+    records: Iterable[GpuHoursRecord],
+    *,
+    ignore_default: bool,
+) -> list[BarChartData]:
     totals: dict[str, float] = defaultdict(float)
     for record in records:
+        if ignore_default and record.account == "default":
+            continue
         totals[record.account] += record.gpu_hours
 
     return [BarChartData(label=account, value=hours) for account, hours in totals.items()]
@@ -196,6 +202,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Normalize GPU hours by the total and plot percentages (true/false).",
     )
     bar_parser.add_argument(
+        "--ignore-default",
+        type=_parse_bool,
+        default=True,
+        help="Ignore the default account when plotting (true/false).",
+    )
+    bar_parser.add_argument(
         "--n",
         type=int,
         help="Plot only the first N projects after sorting.",
@@ -226,6 +238,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=_parse_bool,
         default=False,
         help="Normalize GPU hours by the total and plot percentages (true/false).",
+    )
+    donut_parser.add_argument(
+        "--ignore-default",
+        type=_parse_bool,
+        default=True,
+        help="Ignore the default account when plotting (true/false).",
     )
     donut_parser.add_argument(
         "--title",
@@ -271,7 +289,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def handle_horizontal_bar_chart(args: argparse.Namespace) -> str:
     csv_content = _read_csv_content(args.input)
     records = _load_gpu_hours(csv_content)
-    aggregated = _aggregate_gpu_hours(records)
+    aggregated = _aggregate_gpu_hours(records, ignore_default=args.ignore_default)
     ordered = _sort_and_trim(aggregated, args.sort, args.n)
 
     plot_gpu_hours_horizontal_bar(
@@ -288,7 +306,7 @@ def handle_horizontal_bar_chart(args: argparse.Namespace) -> str:
 def handle_donut_chart(args: argparse.Namespace) -> str:
     csv_content = _read_csv_content(args.input)
     records = _load_gpu_hours(csv_content)
-    aggregated = _aggregate_gpu_hours(records)
+    aggregated = _aggregate_gpu_hours(records, ignore_default=args.ignore_default)
     ordered = _sort_and_trim(aggregated, "desc", None)
     output_path = Path(args.output)
     if output_path.parent != Path("."):
