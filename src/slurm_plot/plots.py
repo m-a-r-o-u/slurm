@@ -28,6 +28,8 @@ def plot_gpu_hours_horizontal_bar(
     if not rows:
         raise ValueError("No data available to plot.")
 
+    labels = [row.label for row in rows]
+    values = [row.value for row in rows]
     total = sum(row.value for row in rows)
     if normalized:
         if total == 0:
@@ -146,8 +148,7 @@ def plot_gpu_hours_donut_chart(
         if normalized:
             return f"{pct:.1f}%"
         value = (pct / 100) * total
-        value_thousands = round(value / 1000)
-        return f"{value_thousands:.0f}k"
+        return f"{value:,.0f}"
 
     wedges, texts, autotexts = ax.pie(
         chart_values,

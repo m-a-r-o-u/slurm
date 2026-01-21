@@ -7,8 +7,10 @@ import csv
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 from io import StringIO
 import math
+from pathlib import Path
 from typing import Iterable, Sequence
 
 from .plots import BarChartData, plot_gpu_hours_donut_chart, plot_gpu_hours_horizontal_bar
@@ -47,7 +49,7 @@ def _read_csv_content(input_path: str | None) -> str:
     return sys.stdin.read()
 
 
-def _load_gpu_hours(csv_content: str) -> list[GpuHoursRecord]:
+def _load_gpu_hours_rows(csv_content: str) -> tuple[list[dict[str, str]], str | None]:
     reader = csv.DictReader(StringIO(csv_content))
     if reader.fieldnames is None:
         raise SystemExit("CSV data is missing headers.")
@@ -57,8 +59,29 @@ def _load_gpu_hours(csv_content: str) -> list[GpuHoursRecord]:
         missing = ", ".join(sorted(required_fields.difference(set(reader.fieldnames))))
         raise SystemExit(f"CSV data missing required columns: {missing}")
 
+    window_field = next(
+        (field for field in reader.fieldnames if field not in required_fields),
+        None,
+    )
+    rows = list(reader)
+    latest_window = None
+    if window_field:
+        latest_window = _select_latest_window(rows, window_field)
+        if latest_window:
+            rows = [
+                row
+                for row in rows
+                if row.get(window_field, "").strip() == latest_window
+            ]
+
+    return rows, latest_window
+
+
+def _load_gpu_hours(csv_content: str) -> list[GpuHoursRecord]:
+    rows, _ = _load_gpu_hours_rows(csv_content)
+
     records: list[GpuHoursRecord] = []
-    for row in reader:
+    for row in rows:
         account = str(row.get("account", "")).strip()
         if not account:
             continue
@@ -75,6 +98,56 @@ def _load_gpu_hours(csv_content: str) -> list[GpuHoursRecord]:
 
     return records
 
+
+def _load_gpu_hours_with_window(
+    csv_content: str,
+) -> tuple[list[GpuHoursRecord], str | None]:
+    rows, latest_window = _load_gpu_hours_rows(csv_content)
+    records: list[GpuHoursRecord] = []
+    for row in rows:
+        account = str(row.get("account", "")).strip()
+        if not account:
+            continue
+        try:
+            gpu_hours = float(row.get("gpu_hours", 0) or 0)
+        except ValueError as exc:
+            raise SystemExit(f"Invalid gpu_hours value: {row.get('gpu_hours')}") from exc
+        accounts = [segment.strip() for segment in account.split(",") if segment.strip()]
+        for account_name in accounts:
+            records.append(GpuHoursRecord(account=account_name, gpu_hours=gpu_hours))
+
+    if not records:
+        raise SystemExit("No valid rows found in the CSV data.")
+
+    return records, latest_window
+
+
+def _parse_window_end(window: str) -> datetime | None:
+    if not window:
+        return None
+    end_segment = window.split("..")[-1].strip()
+    for pattern in ("%Y-%m-%d", "%Y-%m", "%Y"):
+        try:
+            return datetime.strptime(end_segment, pattern)
+        except ValueError:
+            continue
+    return None
+
+
+def _select_latest_window(rows: list[dict[str, str]], window_field: str) -> str | None:
+    window_values = [
+        str(row.get(window_field, "")).strip() for row in rows if row.get(window_field, "")
+    ]
+    if not window_values:
+        return None
+
+    def _window_key(value: str) -> tuple[int, datetime, str]:
+        parsed = _parse_window_end(value)
+        if parsed is None:
+            return (0, datetime.min, value)
+        return (1, parsed, value)
+
+    return max(window_values, key=_window_key)
 
 def _load_gpu_hours_by_project(input_path: str) -> dict[str, float]:
     with open(input_path, "r", encoding="utf-8") as handle:
@@ -135,9 +208,15 @@ def _load_dss_usage(input_path: str) -> dict[str, DssUsageRecord]:
     return records
 
 
-def _aggregate_gpu_hours(records: Iterable[GpuHoursRecord]) -> list[BarChartData]:
+def _aggregate_gpu_hours(
+    records: Iterable[GpuHoursRecord],
+    *,
+    ignore_default: bool,
+) -> list[BarChartData]:
     totals: dict[str, float] = defaultdict(float)
     for record in records:
+        if ignore_default and record.account == "default":
+            continue
         totals[record.account] += record.gpu_hours
 
     return [BarChartData(label=account, value=hours) for account, hours in totals.items()]
@@ -195,6 +274,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Normalize GPU hours by the total and plot percentages (true/false).",
     )
     bar_parser.add_argument(
+        "--ignore-default",
+        type=_parse_bool,
+        default=True,
+        help="Ignore the default account when plotting (true/false).",
+    )
+    bar_parser.add_argument(
         "--n",
         type=int,
         help="Plot only the first N projects after sorting.",
@@ -225,6 +310,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=_parse_bool,
         default=False,
         help="Normalize GPU hours by the total and plot percentages (true/false).",
+    )
+    donut_parser.add_argument(
+        "--ignore-default",
+        type=_parse_bool,
+        default=True,
+        help="Ignore the default account when plotting (true/false).",
     )
     donut_parser.add_argument(
         "--title",
@@ -269,15 +360,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def handle_horizontal_bar_chart(args: argparse.Namespace) -> str:
     csv_content = _read_csv_content(args.input)
-    records = _load_gpu_hours(csv_content)
-    aggregated = _aggregate_gpu_hours(records)
+    records, latest_window = _load_gpu_hours_with_window(csv_content)
+    aggregated = _aggregate_gpu_hours(records, ignore_default=args.ignore_default)
     ordered = _sort_and_trim(aggregated, args.sort, args.n)
+    title = args.title if args.title is not None else latest_window
 
     plot_gpu_hours_horizontal_bar(
         ordered,
         normalized=args.norm,
         sort_order=args.sort,
-        title=args.title,
+        title=title,
         output_path=args.output,
     )
 
@@ -286,18 +378,22 @@ def handle_horizontal_bar_chart(args: argparse.Namespace) -> str:
 
 def handle_donut_chart(args: argparse.Namespace) -> str:
     csv_content = _read_csv_content(args.input)
-    records = _load_gpu_hours(csv_content)
-    aggregated = _aggregate_gpu_hours(records)
+    records, latest_window = _load_gpu_hours_with_window(csv_content)
+    aggregated = _aggregate_gpu_hours(records, ignore_default=args.ignore_default)
     ordered = _sort_and_trim(aggregated, "desc", None)
+    title = args.title if args.title is not None else latest_window
+    output_path = Path(args.output)
+    if output_path.parent != Path("."):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
     plot_gpu_hours_donut_chart(
         ordered,
         normalized=args.norm,
-        title=args.title,
-        output_path=args.output,
+        title=title,
+        output_path=str(output_path),
     )
 
-    return args.output
+    return str(output_path)
 
 
 def handle_project_information(args: argparse.Namespace) -> str:
