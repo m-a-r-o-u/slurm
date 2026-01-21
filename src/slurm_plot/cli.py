@@ -7,6 +7,7 @@ import csv
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 from io import StringIO
 import math
 from pathlib import Path
@@ -58,8 +59,18 @@ def _load_gpu_hours(csv_content: str) -> list[GpuHoursRecord]:
         missing = ", ".join(sorted(required_fields.difference(set(reader.fieldnames))))
         raise SystemExit(f"CSV data missing required columns: {missing}")
 
+    window_field = next(
+        (field for field in reader.fieldnames if field not in required_fields),
+        None,
+    )
+    rows = list(reader)
+    if window_field:
+        latest_window = _select_latest_window(rows, window_field)
+        if latest_window:
+            rows = [row for row in rows if row.get(window_field, "").strip() == latest_window]
+
     records: list[GpuHoursRecord] = []
-    for row in reader:
+    for row in rows:
         account = str(row.get("account", "")).strip()
         if not account:
             continue
@@ -76,6 +87,33 @@ def _load_gpu_hours(csv_content: str) -> list[GpuHoursRecord]:
 
     return records
 
+
+def _parse_window_end(window: str) -> datetime | None:
+    if not window:
+        return None
+    end_segment = window.split("..")[-1].strip()
+    for pattern in ("%Y-%m-%d", "%Y-%m", "%Y"):
+        try:
+            return datetime.strptime(end_segment, pattern)
+        except ValueError:
+            continue
+    return None
+
+
+def _select_latest_window(rows: list[dict[str, str]], window_field: str) -> str | None:
+    window_values = [
+        str(row.get(window_field, "")).strip() for row in rows if row.get(window_field, "")
+    ]
+    if not window_values:
+        return None
+
+    def _window_key(value: str) -> tuple[int, datetime, str]:
+        parsed = _parse_window_end(value)
+        if parsed is None:
+            return (0, datetime.min, value)
+        return (1, parsed, value)
+
+    return max(window_values, key=_window_key)
 
 def _load_gpu_hours_by_project(input_path: str) -> dict[str, float]:
     with open(input_path, "r", encoding="utf-8") as handle:
