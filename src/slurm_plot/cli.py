@@ -49,7 +49,7 @@ def _read_csv_content(input_path: str | None) -> str:
     return sys.stdin.read()
 
 
-def _load_gpu_hours(csv_content: str) -> list[GpuHoursRecord]:
+def _load_gpu_hours_rows(csv_content: str) -> tuple[list[dict[str, str]], str | None]:
     reader = csv.DictReader(StringIO(csv_content))
     if reader.fieldnames is None:
         raise SystemExit("CSV data is missing headers.")
@@ -64,10 +64,21 @@ def _load_gpu_hours(csv_content: str) -> list[GpuHoursRecord]:
         None,
     )
     rows = list(reader)
+    latest_window = None
     if window_field:
         latest_window = _select_latest_window(rows, window_field)
         if latest_window:
-            rows = [row for row in rows if row.get(window_field, "").strip() == latest_window]
+            rows = [
+                row
+                for row in rows
+                if row.get(window_field, "").strip() == latest_window
+            ]
+
+    return rows, latest_window
+
+
+def _load_gpu_hours(csv_content: str) -> list[GpuHoursRecord]:
+    rows, _ = _load_gpu_hours_rows(csv_content)
 
     records: list[GpuHoursRecord] = []
     for row in rows:
@@ -86,6 +97,29 @@ def _load_gpu_hours(csv_content: str) -> list[GpuHoursRecord]:
         raise SystemExit("No valid rows found in the CSV data.")
 
     return records
+
+
+def _load_gpu_hours_with_window(
+    csv_content: str,
+) -> tuple[list[GpuHoursRecord], str | None]:
+    rows, latest_window = _load_gpu_hours_rows(csv_content)
+    records: list[GpuHoursRecord] = []
+    for row in rows:
+        account = str(row.get("account", "")).strip()
+        if not account:
+            continue
+        try:
+            gpu_hours = float(row.get("gpu_hours", 0) or 0)
+        except ValueError as exc:
+            raise SystemExit(f"Invalid gpu_hours value: {row.get('gpu_hours')}") from exc
+        accounts = [segment.strip() for segment in account.split(",") if segment.strip()]
+        for account_name in accounts:
+            records.append(GpuHoursRecord(account=account_name, gpu_hours=gpu_hours))
+
+    if not records:
+        raise SystemExit("No valid rows found in the CSV data.")
+
+    return records, latest_window
 
 
 def _parse_window_end(window: str) -> datetime | None:
@@ -326,15 +360,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def handle_horizontal_bar_chart(args: argparse.Namespace) -> str:
     csv_content = _read_csv_content(args.input)
-    records = _load_gpu_hours(csv_content)
+    records, latest_window = _load_gpu_hours_with_window(csv_content)
     aggregated = _aggregate_gpu_hours(records, ignore_default=args.ignore_default)
     ordered = _sort_and_trim(aggregated, args.sort, args.n)
+    title = args.title if args.title is not None else latest_window
 
     plot_gpu_hours_horizontal_bar(
         ordered,
         normalized=args.norm,
         sort_order=args.sort,
-        title=args.title,
+        title=title,
         output_path=args.output,
     )
 
@@ -343,9 +378,10 @@ def handle_horizontal_bar_chart(args: argparse.Namespace) -> str:
 
 def handle_donut_chart(args: argparse.Namespace) -> str:
     csv_content = _read_csv_content(args.input)
-    records = _load_gpu_hours(csv_content)
+    records, latest_window = _load_gpu_hours_with_window(csv_content)
     aggregated = _aggregate_gpu_hours(records, ignore_default=args.ignore_default)
     ordered = _sort_and_trim(aggregated, "desc", None)
+    title = args.title if args.title is not None else latest_window
     output_path = Path(args.output)
     if output_path.parent != Path("."):
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -353,7 +389,7 @@ def handle_donut_chart(args: argparse.Namespace) -> str:
     plot_gpu_hours_donut_chart(
         ordered,
         normalized=args.norm,
-        title=args.title,
+        title=title,
         output_path=str(output_path),
     )
 
