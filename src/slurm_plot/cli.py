@@ -29,6 +29,13 @@ class DssUsageRecord:
     used_gb: str
 
 
+@dataclass(frozen=True)
+class ProjectListRecord:
+    project_id: str
+    partner: str
+    institution: str
+
+
 def _parse_bool(value: str) -> bool:
     value_lower = value.strip().lower()
     if value_lower in {"true", "1", "yes", "y"}:
@@ -210,6 +217,98 @@ def _load_dss_usage(input_path: str) -> dict[str, DssUsageRecord]:
     return records
 
 
+def _load_project_list(input_path: str) -> dict[str, ProjectListRecord]:
+    with open(input_path, "r", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise SystemExit("Project list CSV data is missing headers.")
+
+        required_fields = {"ProjectID", "Partner", "Institution"}
+        if not required_fields.issubset(set(reader.fieldnames)):
+            missing = ", ".join(sorted(required_fields.difference(set(reader.fieldnames))))
+            raise SystemExit(f"Project list CSV data missing required columns: {missing}")
+
+        records: dict[str, ProjectListRecord] = {}
+        for row in reader:
+            project_id = str(row.get("ProjectID", "")).strip()
+            if not project_id:
+                continue
+            records[project_id] = ProjectListRecord(
+                project_id=project_id,
+                partner=str(row.get("Partner", "")).strip(),
+                institution=str(row.get("Institution", "")).strip(),
+            )
+
+    return records
+
+
+def _combine_gpuh_info(
+    gpuh_files: list[str],
+    gpuh_col_headers: list[str],
+    *,
+    project_list_path: str | None,
+    institution: str | None,
+) -> str:
+    if len(gpuh_files) != len(gpuh_col_headers):
+        raise SystemExit("--gpuh-files and --gpuh-col-header must have the same number of items.")
+
+    project_mapping = _load_project_list(project_list_path) if project_list_path else {}
+    target_institution = institution.strip() if institution else ""
+
+    per_project: dict[tuple[str, str], dict[str, str]] = {}
+    for index, input_path in enumerate(gpuh_files):
+        header = gpuh_col_headers[index]
+        with open(input_path, "r", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            if reader.fieldnames is None:
+                raise SystemExit("GPU hour CSV data is missing headers.")
+
+            required_fields = {"year", "account", "gpu_hours"}
+            if not required_fields.issubset(set(reader.fieldnames)):
+                missing = ", ".join(sorted(required_fields.difference(set(reader.fieldnames))))
+                raise SystemExit(f"GPU hour CSV data missing required columns: {missing}")
+
+            for row in reader:
+                year = str(row.get("year", "")).strip()
+                account = str(row.get("account", "")).strip()
+                gpu_hours = str(row.get("gpu_hours", "")).strip()
+                if not year or not account:
+                    continue
+
+                key = (year, account)
+                if key not in per_project:
+                    per_project[key] = {
+                        "year": year,
+                        "ProjectID": account,
+                        "Partner": "",
+                        **{name: "" for name in gpuh_col_headers},
+                    }
+                per_project[key][header] = gpu_hours
+
+    rows = list(per_project.values())
+    if project_mapping:
+        for row in rows:
+            metadata = project_mapping.get(row["ProjectID"])
+            row["Partner"] = metadata.partner if metadata else ""
+
+        if target_institution:
+            rows = [
+                row
+                for row in rows
+                if row["ProjectID"] in project_mapping
+                and project_mapping[row["ProjectID"]].institution == target_institution
+            ]
+
+    rows.sort(key=lambda item: (item["year"], item["ProjectID"]))
+
+    output = StringIO()
+    fieldnames = ["year", "ProjectID", "Partner", *gpuh_col_headers]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+    return output.getvalue().strip()
+
+
 def _aggregate_gpu_hours(
     records: Iterable[GpuHoursRecord],
     *,
@@ -363,6 +462,33 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format for the project information (csv, table, markdown).",
     )
 
+    combined_gpuh_parser = subparsers.add_parser(
+        "combine-GPUh-info",
+        help="Combine multiple GPU hour CSV files into a single CSV by year and project.",
+    )
+    combined_gpuh_parser.add_argument(
+        "--gpuh-files",
+        type=str,
+        required=True,
+        help="Comma-separated list of GPU hour CSV files.",
+    )
+    combined_gpuh_parser.add_argument(
+        "--gpuh-col-header",
+        type=str,
+        required=True,
+        help="Comma-separated output column names corresponding to --gpuh-files.",
+    )
+    combined_gpuh_parser.add_argument(
+        "--project-list",
+        type=str,
+        help="Optional CSV mapping with ProjectID, Partner, Institution columns.",
+    )
+    combined_gpuh_parser.add_argument(
+        "--institution",
+        type=str,
+        help="Optional institution name to filter projects (requires --project-list).",
+    )
+
     return parser
 
 
@@ -410,7 +536,7 @@ def handle_project_information(args: argparse.Namespace) -> str:
     if args.input_gpuh:
         gpu_hours_mapping = _load_gpu_hours_by_project(
             args.input_gpuh,
-            ignore_default=args.ignore_default,
+            ignore_default=getattr(args, "ignore_default", True),
         )
     dss_mapping = _load_dss_usage(args.input_dss) if args.input_dss else {}
 
@@ -485,6 +611,17 @@ def main(argv: Sequence[str] | None = None) -> None:
         output = handle_donut_chart(args)
     elif args.command == "project-information":
         output = handle_project_information(args)
+    elif args.command == "combine-GPUh-info":
+        gpuh_files = [item.strip() for item in args.gpuh_files.split(",") if item.strip()]
+        gpuh_col_headers = [
+            item.strip() for item in args.gpuh_col_header.split(",") if item.strip()
+        ]
+        output = _combine_gpuh_info(
+            gpuh_files,
+            gpuh_col_headers,
+            project_list_path=args.project_list,
+            institution=args.institution,
+        )
     else:  # pragma: no cover - argparse enforces known commands
         parser.error("Unknown command")
         return
