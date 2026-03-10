@@ -242,6 +242,32 @@ def _load_project_list(input_path: str) -> dict[str, ProjectListRecord]:
     return records
 
 
+
+
+def _sum_gpuh(input_path: str) -> float:
+    with open(input_path, "r", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise SystemExit("GPU hour CSV data is missing headers.")
+
+        required_fields = {"gpu_hours"}
+        if not required_fields.issubset(set(reader.fieldnames)):
+            missing = ", ".join(sorted(required_fields.difference(set(reader.fieldnames))))
+            raise SystemExit(f"GPU hour CSV data missing required columns: {missing}")
+
+        total = 0.0
+        for row in reader:
+            raw_value = str(row.get("gpu_hours", "")).strip()
+            if not raw_value:
+                continue
+            try:
+                total += float(raw_value)
+            except ValueError as exc:
+                raise SystemExit(f"Invalid gpu_hours value: {raw_value}") from exc
+
+    return total
+
+
 def _combine_gpuh_info(
     gpuh_files: list[str],
     gpuh_col_headers: list[str],
@@ -489,6 +515,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional institution name to filter projects (requires --project-list).",
     )
 
+    sum_gpuh_parser = subparsers.add_parser(
+        "sum-GPUh",
+        help="Sum GPU hours from a year,account,gpu_hours CSV file.",
+    )
+    sum_gpuh_parser.add_argument(
+        "--gpuh-file",
+        type=str,
+        required=True,
+        help="Path to a GPU hour CSV file.",
+    )
+
     return parser
 
 
@@ -622,6 +659,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             project_list_path=args.project_list,
             institution=args.institution,
         )
+    elif args.command == "sum-GPUh":
+        output = str(_sum_gpuh(args.gpuh_file))
     else:  # pragma: no cover - argparse enforces known commands
         parser.error("Unknown command")
         return
