@@ -284,6 +284,28 @@ def test_query_metrics_csv_format(tmp_path: Path):
     assert "2025-03,u2,5.0" in lines
 
 
+
+def test_query_metrics_month_windows_anchor_to_start_date(tmp_path: Path):
+    dataset_path = tmp_path / "jobs_data.parquet"
+    records = [
+        {"end_ts": "2025-01-10T00:00:00+00:00", "gpu_hours": 1.0},
+        {"end_ts": "2025-04-20T00:00:00+00:00", "gpu_hours": 2.0},
+        {"end_ts": "2025-05-01T00:00:00+00:00", "gpu_hours": 3.0},
+    ]
+    dataset_path.write_text(json.dumps(records))
+
+    result = query_metrics(
+        "gpu_hours",
+        dataset_path=dataset_path,
+        by=["4months"],
+        date_range=DateRange(start=date(2025, 1, 1), end=date(2025, 5, 1)),
+    )
+
+    assert result.rows == [
+        {"4months": "2025-01..2025-04", "gpu_hours": 3.0},
+        {"4months": "2025-05..2025-08", "gpu_hours": 3.0},
+    ]
+
 def test_query_metrics_select_filters(tmp_path: Path):
     dataset_path = tmp_path / "jobs_data.parquet"
     records = [
