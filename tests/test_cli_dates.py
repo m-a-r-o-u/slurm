@@ -20,6 +20,12 @@ class ResolveDateRangeFromArgsTests(unittest.TestCase):
         self.assertEqual(rng.start, date(2024, 3, 1))
         self.assertEqual(rng.end, date(2024, 3, 10))
 
+    def test_start_without_end_uses_latest_available_date(self):
+        args = argparse.Namespace(date=None, start="2025", end=None, reference_date=date(2026, 7, 1))
+        rng = _resolve_date_range_from_args(args)
+        self.assertEqual(rng.start, date(2025, 1, 1))
+        self.assertEqual(rng.end, date(2026, 6, 30))
+
     def test_missing_date_values_raise(self):
         args = argparse.Namespace(date=None, start=None, end=None, reference_date=date(2024, 1, 1))
         with self.assertRaises(SystemExit):

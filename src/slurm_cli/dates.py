@@ -116,11 +116,12 @@ def resolve_date_range(
     end_value: str | None,
     *,
     reference_date: date | None = None,
+    use_start_precision_for_implicit_end: bool = True,
 ) -> DateRange:
     """Resolve the inclusive date range based on flexible start and optional end.
 
     The derived end date is capped at the last available day (yesterday) so that
-    requests using only ``--date`` respect currently available data.
+    requests respect currently available data.
     """
 
     available_end = (reference_date or date.today()) - timedelta(days=1)
@@ -130,5 +131,8 @@ def resolve_date_range(
             return relative_range
 
     start_date, precision = _parse_start(start_value)
-    end_date = _derive_end(start_date, precision, end_value, available_end)
+    if end_value is None and not use_start_precision_for_implicit_end:
+        end_date = _derive_end(start_date, precision, available_end.isoformat(), available_end)
+    else:
+        end_date = _derive_end(start_date, precision, end_value, available_end)
     return DateRange(start=start_date, end=end_date)
