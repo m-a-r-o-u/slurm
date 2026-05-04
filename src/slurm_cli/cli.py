@@ -37,7 +37,7 @@ def _add_date_arguments(parser: argparse.ArgumentParser, start_required: bool = 
         "-e",
         help=(
             "Optional end date in YYYY-MM-DD. Ignored when --date is used. When omitted,"
-            " the end date is derived from the --start precision."
+            " --start queries run through the latest available date."
         ),
     )
 
@@ -47,14 +47,22 @@ def _resolve_date_range_from_args(args: argparse.Namespace) -> DateRange:
     if getattr(args, "date", None):
         date_value = str(args.date)
         try:
-            return resolve_date_range(date_value, None, reference_date=reference_date)
+            return resolve_date_range(
+                date_value,
+                None,
+                reference_date=reference_date,
+                use_start_precision_for_implicit_end=True,
+            )
         except DateRangeError as exc:  # noqa: TRY301
             raise SystemExit(str(exc))
 
     if getattr(args, "start", None):
         try:
             return resolve_date_range(
-                str(args.start), getattr(args, "end", None), reference_date=reference_date
+                str(args.start),
+                getattr(args, "end", None),
+                reference_date=reference_date,
+                use_start_precision_for_implicit_end=False,
             )
         except DateRangeError as exc:  # noqa: TRY301
             raise SystemExit(str(exc))

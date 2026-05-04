@@ -56,6 +56,16 @@ class DateRangeTests(unittest.TestCase):
         with self.assertRaises(DateRangeError):
             resolve_date_range("2024-05-10", None, reference_date=date(2024, 5, 5))
 
+    def test_start_can_extend_to_available_end_when_requested(self):
+        rng = resolve_date_range(
+            "2025",
+            None,
+            reference_date=date(2026, 6, 15),
+            use_start_precision_for_implicit_end=False,
+        )
+        self.assertEqual(rng.start, date(2025, 1, 1))
+        self.assertEqual(rng.end, date(2026, 6, 14))
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
