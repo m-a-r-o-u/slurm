@@ -207,7 +207,7 @@ def plot_gpu_hours_heatmap(
     data: HeatmapData,
     *,
     output_path: str,
-    bin_size: int = 5000,
+    bin_size: int = 2000,
 ) -> None:
     if not data.row_labels:
         raise ValueError("No project or user rows available to plot.")
@@ -225,7 +225,8 @@ def plot_gpu_hours_heatmap(
 
     row_count = len(data.row_labels)
     column_count = len(data.column_labels)
-    figure_height = min(60.0, max(5.5, 0.35 * row_count + 2.0))
+    row_height = 0.62 if data.entity_label == "user" else 0.55
+    figure_height = min(200.0, max(6.5, row_height * row_count + 3.2))
     figure_width = min(28.0, max(10.0, 1.25 * column_count + 4.0))
 
     fig, ax = plt.subplots(figsize=(figure_width, figure_height))
@@ -240,11 +241,21 @@ def plot_gpu_hours_heatmap(
     ax.set_yticks(np.arange(-0.5, row_count, 1), minor=True)
     ax.grid(which="minor", color="#f9fafb", linestyle="-", linewidth=0.8)
     ax.tick_params(which="minor", bottom=False, left=False)
-    ax.tick_params(axis="x", labelrotation=45, labelsize=10)
+    ax.tick_params(
+        axis="x",
+        labelrotation=45,
+        labelsize=10,
+        top=True,
+        labeltop=True,
+        bottom=True,
+        labelbottom=True,
+        pad=3,
+    )
     ax.tick_params(axis="y", labelsize=9)
 
     for label in ax.get_xticklabels() + ax.get_yticklabels():
         label.set_fontfamily("monospace")
+        label.set_horizontalalignment("right")
 
     for row_index in range(row_count):
         for column_index in range(column_count):

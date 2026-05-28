@@ -129,7 +129,8 @@ combinations with `0`.
 ```bash
 slurm-plot heatmap-gpuhours \
   --input gpuh.csv \
-  --output heatmap-gpuh.pdf
+  --output heatmap-gpuh.pdf \
+  --bin 2000
 ```
 
 Example project input:
@@ -150,8 +151,10 @@ Example user input:
 ```
 
 The output format follows the `--output` file extension; use `.png` for PNG or
-`.pdf` for PDF. Cells use discrete 5,000 GPU-hour color bins, include exact GPU
-hour values, and show a bin legend.
+`.pdf` for PDF. Cells use discrete GPU-hour color bins, include exact GPU-hour
+values, and show a bin legend. Use `--bin` to set the bin size in GPUh; the
+default is `2000`. Quarter labels are shown on both the top and bottom axes for
+readability.
 
 ## Project information table
 

@@ -80,3 +80,34 @@ def test_handle_heatmap_gpuhours_writes_requested_output(tmp_path: Path) -> None
     assert list(called_data.row_labels) == ["b2101"]
     assert list(called_data.column_labels) == ["2025 Q1"]
     assert plot_heatmap.call_args.kwargs["output_path"] == str(output_path)
+    assert plot_heatmap.call_args.kwargs["bin_size"] == 2000
+
+
+def test_handle_heatmap_gpuhours_passes_custom_bin_size(tmp_path: Path) -> None:
+    input_path = tmp_path / "gpuh.csv"
+    output_path = tmp_path / "heatmap-gpuh.png"
+    _write(
+        input_path,
+        "\n".join(
+            [
+                "3months,account,gpu_hours",
+                "2025-01..2025-03,b2101,0.2",
+            ]
+        ),
+    )
+    args = plot_cli._build_parser().parse_args(
+        [
+            "heatmap-gpuhours",
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_path),
+            "--bin",
+            "750",
+        ]
+    )
+
+    with patch("slurm_plot.cli.plot_gpu_hours_heatmap") as plot_heatmap:
+        plot_cli.handle_heatmap_gpuhours(args)
+
+    assert plot_heatmap.call_args.kwargs["bin_size"] == 750

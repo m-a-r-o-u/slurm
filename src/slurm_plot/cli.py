@@ -51,6 +51,16 @@ def _parse_bool(value: str) -> bool:
     raise argparse.ArgumentTypeError("Expected a boolean value (true/false).")
 
 
+def _parse_positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Expected a positive integer.") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("Expected a positive integer.")
+    return parsed
+
+
 def _read_csv_content(input_path: str | None) -> str:
     if input_path:
         with open(input_path, "r", encoding="utf-8") as handle:
@@ -570,6 +580,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default="heatmap-gpuh.png",
         help="Output path for the heatmap image (PNG or PDF; defaults to heatmap-gpuh.png).",
     )
+    heatmap_parser.add_argument(
+        "--bin",
+        type=_parse_positive_int,
+        default=2000,
+        help="GPU-hour bin size for discrete heatmap colors (defaults to 2000 GPUh).",
+    )
 
     info_parser = subparsers.add_parser(
         "project-information",
@@ -695,7 +711,11 @@ def handle_heatmap_gpuhours(args: argparse.Namespace) -> str:
     if output_path.parent != Path("."):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    plot_gpu_hours_heatmap(heatmap_data, output_path=str(output_path))
+    plot_gpu_hours_heatmap(
+        heatmap_data,
+        output_path=str(output_path),
+        bin_size=args.bin,
+    )
 
     return str(output_path)
 
