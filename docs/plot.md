@@ -22,6 +22,7 @@ Available commands:
 | --- | --- |
 | `horizontal-bar-chart-gpuhours` | Plot GPU hours per project as a horizontal bar chart. |
 | `donut-chart-gpuhours` | Plot GPU hours per project as a donut chart. |
+| `heatmap-gpuhours` | Plot quarterly GPU hours by project/account or user as a heatmap. |
 | `project-information` | Generate a project information table from PI, GPU-hour, and DSS inputs. |
 | `combine-GPUh-info` | Combine multiple GPU-hour CSV files into one CSV by year and project. |
 | `sum-GPUh` | Sum the `gpu_hours` column in a GPU-hour CSV file. |
@@ -31,6 +32,7 @@ Run help for any command to see all options:
 ```bash
 slurm-plot horizontal-bar-chart-gpuhours --help
 slurm-plot donut-chart-gpuhours --help
+slurm-plot heatmap-gpuhours --help
 slurm-plot project-information --help
 slurm-plot combine-GPUh-info --help
 slurm-plot sum-GPUh --help
@@ -114,6 +116,45 @@ Common options:
   Defaults to `true`.
 - `--title TEXT`: optional title suffix. If omitted and the CSV has a window
   column, the latest window is used.
+
+## Quarterly GPU-hour heatmap
+
+Use `heatmap-gpuhours` to visualize GPU usage over time. The command accepts
+CSV input with a quarter/window column (`quarter`, `3months`, or the remaining
+non-ID column), either `account` for projects or `user` for users, and
+`gpu_hours`. It sorts projects or users by total GPU hours descending, preserves
+chronological quarter order, and fills missing project-quarter or user-quarter
+combinations with `0`.
+
+```bash
+slurm-plot heatmap-gpuhours \
+  --input gpuh.csv \
+  --output heatmap-gpuh.pdf \
+  --bin 2000
+```
+
+Example project input:
+
+```csv
+3months,account,gpu_hours
+2025-01..2025-03,b2101,0.2
+2025-01..2025-03,bx121,0.0
+2025-04..2025-06,b2101,5001
+```
+
+Example user input:
+
+```csv
+3months,user,gpu_hours
+2025-01..2025-03,apdl006,143.2
+2025-01..2025-03,apdl011,466.6
+```
+
+The output format follows the `--output` file extension; use `.png` for PNG or
+`.pdf` for PDF. Cells use discrete GPU-hour color bins, include exact GPU-hour
+values, and show a bin legend. Use `--bin` to set the bin size in GPUh; the
+default is `2000`. Quarter labels are shown on both the top and bottom axes for
+readability.
 
 ## Project information table
 
