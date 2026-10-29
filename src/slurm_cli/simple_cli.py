@@ -110,8 +110,9 @@ def _build_parser() -> argparse.ArgumentParser:
         type=str,
         default="",
         help=(
-            "Comma-separated grouping columns. Supported: day, week, month, year, partition, "
-            "account, user, state. At most one time-based value is allowed and it must be first."
+            "Comma-separated grouping columns. Supported: day, week, month, quarter, year, partition, "
+            "account, user, state. At most one time-based value is allowed and it must be first. "
+            "Quarters start in January, April, July, and October (YYYY-Q1 through YYYY-Q4)."
         ),
     )
     metrics_query_parser.add_argument(

@@ -31,11 +31,13 @@ Aggregate derived metrics from the jobs dataset:
 ```
 slurm-utils metrics query gpu_hours --by month,account
 slurm-utils metrics query gpu_hours --by month,account --stat mean
+slurm-utils metrics query gpu_hours --by quarter,account --format csv
 slurm-utils metrics query gpu_hours --date 2025-03 --format table
 ```
 
-- `--by` sets grouping columns. Supported values: `day`, `week`, `month`, `year`, `partition`, `account`, `user`, `state`.
+- `--by` sets grouping columns. Supported values: `day`, `week`, `month`, `quarter`, `year`, `partition`, `account`, `user`, `state`.
 - At most one time-based value is allowed, and it must be the first entry. Time buckets are derived from `end_ts`.
+- `quarter` uses calendar quarters: January–March (`YYYY-Q1`), April–June (`YYYY-Q2`), July–September (`YYYY-Q3`), and October–December (`YYYY-Q4`). Boundaries stay fixed even when the selected date range starts mid-quarter; only jobs inside the selected range contribute.
 - Statistics default to `sum`. Provide `--stat mean` for per-job averages (e.g., mean GPU hours per group).
 - Optional date selectors `--date`, `--start`, and `--end` reuse the sacct export rules to limit which jobs to aggregate, based on `end_ts`.
 - Use `--format` to switch output rendering: `json` (default), `yaml`, `csv`, or a plaintext `table` layout for quick inspection.
