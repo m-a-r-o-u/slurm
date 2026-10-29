@@ -40,6 +40,7 @@ slurm-utils metrics query gpu_hours --by year,account --format csv > gpuh.csv
 # Plot the resulting GPU-hour CSV.
 slurm-plot horizontal-bar-chart-gpuhours --input gpuh.csv --output gpu-hours.png
 slurm-plot donut-chart-gpuhours --input gpuh.csv --output gpu-hours-donut.png --norm true
+slurm-plot heatmap-gpuhours --input gpuh.csv --output heatmap-gpuh.pdf --bin 2000
 ```
 
 ## Documentation

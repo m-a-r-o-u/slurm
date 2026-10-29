@@ -13,7 +13,13 @@ import math
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from .output import BarChartData, plot_gpu_hours_donut_chart, plot_gpu_hours_horizontal_bar
+from .output import (
+    BarChartData,
+    HeatmapData,
+    plot_gpu_hours_donut_chart,
+    plot_gpu_hours_heatmap,
+    plot_gpu_hours_horizontal_bar,
+)
 
 
 @dataclass(frozen=True)
@@ -43,6 +49,16 @@ def _parse_bool(value: str) -> bool:
     if value_lower in {"false", "0", "no", "n"}:
         return False
     raise argparse.ArgumentTypeError("Expected a boolean value (true/false).")
+
+
+def _parse_positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Expected a positive integer.") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("Expected a positive integer.")
+    return parsed
 
 
 def _read_csv_content(input_path: str | None) -> str:
@@ -155,6 +171,105 @@ def _select_latest_window(rows: list[dict[str, str]], window_field: str) -> str 
         return (1, parsed, value)
 
     return max(window_values, key=_window_key)
+
+
+def _parse_quarter_start(window: str) -> datetime | None:
+    if not window:
+        return None
+    start_segment = window.split("..")[0].strip()
+    for pattern in ("%Y-%m-%d", "%Y-%m", "%Y"):
+        try:
+            return datetime.strptime(start_segment, pattern)
+        except ValueError:
+            continue
+    return None
+
+
+def _format_quarter_label(window: str) -> str:
+    parsed = _parse_quarter_start(window)
+    if parsed is None:
+        return window
+    quarter = ((parsed.month - 1) // 3) + 1
+    return f"{parsed.year} Q{quarter}"
+
+
+def _quarter_sort_key(window: str) -> tuple[int, datetime, str]:
+    parsed = _parse_quarter_start(window)
+    if parsed is None:
+        return (1, datetime.max, window)
+    return (0, parsed, window)
+
+
+def _load_gpu_hours_heatmap(csv_content: str) -> HeatmapData:
+    reader = csv.DictReader(StringIO(csv_content))
+    if reader.fieldnames is None:
+        raise SystemExit("CSV data is missing headers.")
+
+    fieldnames = set(reader.fieldnames)
+    if "gpu_hours" not in fieldnames:
+        raise SystemExit("CSV data missing required columns: gpu_hours")
+
+    if "user" in fieldnames:
+        entity_field = "user"
+        entity_label = "user"
+    elif "account" in fieldnames:
+        entity_field = "account"
+        entity_label = "project"
+    else:
+        raise SystemExit("CSV data missing required columns: account or user")
+
+    quarter_field = next(
+        (
+            field
+            for field in ("quarter", "3months")
+            if field in fieldnames
+        ),
+        None,
+    )
+    if quarter_field is None:
+        remaining_fields = [
+            field
+            for field in reader.fieldnames
+            if field not in {entity_field, "gpu_hours"}
+        ]
+        quarter_field = remaining_fields[0] if remaining_fields else None
+    if quarter_field is None:
+        raise SystemExit("CSV data missing required columns: quarter")
+
+    totals: dict[tuple[str, str], float] = defaultdict(float)
+    entity_totals: dict[str, float] = defaultdict(float)
+    quarters_seen: set[str] = set()
+
+    for row in reader:
+        quarter = str(row.get(quarter_field, "")).strip()
+        entity = str(row.get(entity_field, "")).strip()
+        if not quarter or not entity:
+            continue
+        try:
+            gpu_hours = float(row.get("gpu_hours", 0) or 0)
+        except ValueError as exc:
+            raise SystemExit(f"Invalid gpu_hours value: {row.get('gpu_hours')}") from exc
+
+        totals[(entity, quarter)] += gpu_hours
+        entity_totals[entity] += gpu_hours
+        quarters_seen.add(quarter)
+
+    if not totals:
+        raise SystemExit("No valid rows found in the CSV data.")
+
+    quarters = sorted(quarters_seen, key=_quarter_sort_key)
+    entities = sorted(entity_totals, key=lambda item: (-entity_totals[item], item))
+    values = [
+        [totals.get((entity, quarter), 0.0) for quarter in quarters]
+        for entity in entities
+    ]
+
+    return HeatmapData(
+        row_labels=entities,
+        column_labels=[_format_quarter_label(quarter) for quarter in quarters],
+        values=values,
+        entity_label=entity_label,
+    )
 
 def _load_gpu_hours_by_project(input_path: str, *, ignore_default: bool) -> dict[str, float]:
     with open(input_path, "r", encoding="utf-8") as handle:
@@ -450,6 +565,28 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional title suffix to include in parentheses.",
     )
 
+    heatmap_parser = subparsers.add_parser(
+        "heatmap-gpuhours",
+        help="Plot a quarterly GPU-hour heatmap by project or user.",
+    )
+    heatmap_parser.add_argument(
+        "--input",
+        type=str,
+        help="Path to a CSV file with quarter/3months, account/user, and gpu_hours columns (defaults to stdin).",
+    )
+    heatmap_parser.add_argument(
+        "--output",
+        type=str,
+        default="heatmap-gpuh.png",
+        help="Output path for the heatmap image (PNG or PDF; defaults to heatmap-gpuh.png).",
+    )
+    heatmap_parser.add_argument(
+        "--bin",
+        type=_parse_positive_int,
+        default=2000,
+        help="GPU-hour bin size for discrete heatmap colors (defaults to 2000 GPUh).",
+    )
+
     info_parser = subparsers.add_parser(
         "project-information",
         help="Generate a project information table for PI, GPU hours, and DSS usage.",
@@ -567,6 +704,22 @@ def handle_donut_chart(args: argparse.Namespace) -> str:
     return str(output_path)
 
 
+def handle_heatmap_gpuhours(args: argparse.Namespace) -> str:
+    csv_content = _read_csv_content(args.input)
+    heatmap_data = _load_gpu_hours_heatmap(csv_content)
+    output_path = Path(args.output)
+    if output_path.parent != Path("."):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    plot_gpu_hours_heatmap(
+        heatmap_data,
+        output_path=str(output_path),
+        bin_size=args.bin,
+    )
+
+    return str(output_path)
+
+
 def handle_project_information(args: argparse.Namespace) -> str:
     pi_mapping = _load_project_pi(args.input_pi) if args.input_pi else {}
     gpu_hours_mapping = {}
@@ -646,6 +799,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         output = handle_horizontal_bar_chart(args)
     elif args.command == "donut-chart-gpuhours":
         output = handle_donut_chart(args)
+    elif args.command == "heatmap-gpuhours":
+        output = handle_heatmap_gpuhours(args)
     elif args.command == "project-information":
         output = handle_project_information(args)
     elif args.command == "combine-GPUh-info":
