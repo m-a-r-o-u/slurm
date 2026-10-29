@@ -334,14 +334,16 @@ def _derive_time_bucket(
         return f"{iso_year}-W{iso_week:02d}"
     if granularity == "month":
         return f"{end_ts.year:04d}-{end_ts.month:02d}"
+    if granularity == "quarter":
+        return f"{end_ts.year:04d}-Q{(end_ts.month - 1) // 3 + 1}"
     if granularity == "year":
         return f"{end_ts.year:04d}"
     return None
 
 
 def _validate_grouping(by: list[str]) -> tuple[Optional[str], list[str]]:
-    allowed = {"day", "week", "month", "year", "partition", "account", "user", "state"}
-    time_keys = {"day", "week", "month", "year"}
+    allowed = {"day", "week", "month", "quarter", "year", "partition", "account", "user", "state"}
+    time_keys = {"day", "week", "month", "quarter", "year"}
 
     for entry in by:
         if entry in allowed:

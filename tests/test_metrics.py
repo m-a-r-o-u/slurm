@@ -208,6 +208,66 @@ def test_query_metrics_groups_and_stats(tmp_path: Path):
         query_metrics("gpu_hours", dataset_path=dataset_path, by=["account", "month"])
 
 
+@pytest.mark.parametrize("stat, expected_value", [("sum", 6.0), ("mean", 2.0)])
+def test_query_metrics_calendar_quarters(tmp_path: Path, stat, expected_value):
+    dataset_path = tmp_path / "jobs_data.json"
+    # Reverse input order to verify chronological output across the year boundary.
+    records = [
+        {
+            "end_ts": f"2025-{month:02d}-15T00:00:00+00:00",
+            "account": "a",
+            "gpu_hours": float((month - 1) % 3 + 1),
+        }
+        for month in range(12, 0, -1)
+    ]
+    records.append({"end_ts": "2026-01-01T00:00:00+00:00", "account": "a", "gpu_hours": 9})
+    records.append({"end_ts": "2025-03-31T23:59:59+00:00", "account": "b", "gpu_hours": 4})
+    dataset_path.write_text(json.dumps(records))
+
+    result = query_metrics(
+        "gpu_hours", dataset_path=dataset_path, by=["quarter", "account"], stat=stat
+    )
+
+    assert result.rows == [
+        {"quarter": "2025-Q1", "account": "a", "gpu_hours": expected_value},
+        {"quarter": "2025-Q1", "account": "b", "gpu_hours": 4.0},
+        {"quarter": "2025-Q2", "account": "a", "gpu_hours": expected_value},
+        {"quarter": "2025-Q3", "account": "a", "gpu_hours": expected_value},
+        {"quarter": "2025-Q4", "account": "a", "gpu_hours": expected_value},
+        {"quarter": "2026-Q1", "account": "a", "gpu_hours": 9.0},
+    ]
+
+
+def test_quarter_cli_keeps_calendar_boundaries_with_date_filter(tmp_path: Path, capsys):
+    dataset_path = tmp_path / "jobs_data.json"
+    dataset_path.write_text(json.dumps([
+        {"end_ts": "2025-01-31T23:59:59+00:00", "account": "a", "gpu_hours": 100},
+        {"end_ts": "2025-02-01T00:00:00+00:00", "account": "a", "gpu_hours": 2},
+        {"end_ts": "2025-03-31T23:59:59+00:00", "account": "a", "gpu_hours": 3},
+        {"end_ts": "2025-04-01T00:00:00+00:00", "account": "a", "gpu_hours": 4},
+        {"end_ts": "2025-04-02T00:00:00+00:00", "account": "a", "gpu_hours": 100},
+    ]))
+
+    simple_cli.main([
+        "metrics", "query", "gpu_hours", "--dataset-path", str(dataset_path),
+        "--by", "quarter,account", "--start", "2025-02-01", "--end", "2025-04-01",
+        "--format", "csv",
+    ])
+
+    assert capsys.readouterr().out.splitlines() == [
+        "quarter,account,gpu_hours", "2025-Q1,a,5.0", "2025-Q2,a,4.0"
+    ]
+
+
+@pytest.mark.parametrize("by", [
+    ["account", "quarter"], ["quarter", "month"], ["year", "quarter"],
+    ["quarter", "3months"],
+])
+def test_query_metrics_rejects_invalid_quarter_grouping(tmp_path: Path, by):
+    with pytest.raises(ValueError, match="[Tt]ime-based grouping"):
+        query_metrics("gpu_hours", dataset_path=tmp_path / "unused.json", by=by)
+
+
 def test_query_metrics_date_filter_and_table_format(tmp_path: Path):
     dataset_path = tmp_path / "jobs_data.parquet"
     records = [
